@@ -1,0 +1,35 @@
+# dependencies / build
+node_modules/
+dist/
+.vercel/
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+coverage/
+lcov.info
+
+# env and keys
+.env
+.env.*
+!.env.example
+*.key
+.secrets/
+
+# tooling state
+.arc-studio/
+
+# working notes (never published)
+BRIEF.md
+SPEC.md
+PLAN.md
+STATE.md
+NOTES*.md
+*-internal/
+*-backup*
+*.bundle
+submission*.md
+design/
+mockups/
+ui-prototypes/
+variants/
+screencast/
