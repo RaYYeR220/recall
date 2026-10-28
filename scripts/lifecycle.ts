@@ -499,7 +499,9 @@ await step("b2: relayer submits activateMandateWithPermit", async () => {
 // ── Step c: prenotify 0.05 EURC, wait, collect → SETTLED ────────────────────
 
 const minPre = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "minPrenotice" });
-const dueAt1 = await now() + minPre + 5n;
+// Public RPCs are load-balanced and a node can lag a few seconds behind; leave room so a due date never lands inside the pre-notice.
+const DUE_MARGIN = network === "arc" ? 30n : 5n;
+const dueAt1 = await now() + minPre + DUE_MARGIN;
 
 let coll1Id: Hex;
 
@@ -520,7 +522,7 @@ await step("c2: debtor approves 0.05 EURC", async () => {
   return { hash };
 });
 
-await waitSeconds(Number(minPre) + 6);
+await waitSeconds(Number(minPre + DUE_MARGIN) + 6);
 
 await step("c3: collect → SETTLED (fully covered)", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "collect", args: [coll1Id] });
@@ -548,7 +550,7 @@ await step("d: relayer submits executeDebtorAction REFUND → REFUNDED", async (
 
 // Reserve is 0.10 EURC; after refund it's back since refund unwinds locked from reserve.
 // So free is still 0.10. Scheduling 0.15 → locked=0.10, held=0.05.
-const dueAt2 = await now() + minPre + 5n;
+const dueAt2 = await now() + minPre + DUE_MARGIN;
 let coll2Id: Hex;
 
 await step("e1: prenotify 0.15 EURC (locked+held split)", async () => {
@@ -568,7 +570,7 @@ await step("e2: debtor approves 0.15 EURC", async () => {
   return { hash };
 });
 
-await waitSeconds(Number(minPre) + 6);
+await waitSeconds(Number(minPre + DUE_MARGIN) + 6);
 
 await step("e3: collect → SETTLED (locked + held split)", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "collect", args: [coll2Id] });
@@ -626,7 +628,7 @@ await step("f1: activate B2B one-off USDC mandate", async () => {
   return { hash, detail: { mandateId: mandateB2BId } };
 });
 
-const dueAtB2B = await now() + minPre + 5n;
+const dueAtB2B = await now() + minPre + DUE_MARGIN;
 
 await step("f2: prenotify 0.05 USDC", async () => {
   const e2eId = ref("e2e003");
@@ -644,7 +646,7 @@ await step("f3: debtor approves 0.05 USDC", async () => {
   return { hash };
 });
 
-await waitSeconds(Number(minPre) + 6);
+await waitSeconds(Number(minPre + DUE_MARGIN) + 6);
 
 await step("f4: collect B2B → FINAL immediately", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "collect", args: [collB2BId] });
@@ -699,7 +701,7 @@ await step("g1: activate mandate for debtor2 (no balance)", async () => {
   return { hash, detail: { mandateId: mandateAM04Id, debtor: debtor2Account.address } };
 });
 
-const dueAtAM04 = await now() + minPre + 5n;
+const dueAtAM04 = await now() + minPre + DUE_MARGIN;
 
 await step("g2: prenotify 0.05 EURC for debtor2", async () => {
   const e2eId = ref("e2e004");
@@ -711,7 +713,7 @@ await step("g2: prenotify 0.05 EURC for debtor2", async () => {
   return { hash, detail: { collectionId: collAM04Id } };
 });
 
-await waitSeconds(Number(minPre) + 6);
+await waitSeconds(Number(minPre + DUE_MARGIN) + 6);
 
 await step("g3: collect → RETURNED AM04 (no balance)", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "collect", args: [collAM04Id] });
@@ -723,7 +725,7 @@ await step("g3: collect → RETURNED AM04 (no balance)", async () => {
 // ── Step h: refuse + revoke + prenotify reverts MD01 ─────────────────────────
 
 // Use a fresh mandate for h — the original mandateId
-const dueAtH = await now() + minPre + 5n;
+const dueAtH = await now() + minPre + DUE_MARGIN;
 let collHId: Hex;
 
 await step("h1: prenotify for CORE mandate", async () => {
@@ -784,7 +786,7 @@ await simulate("collect too early (TooEarly)", async () => {
 await simulate("prenotify over period cap (OverPeriodCap)", async () => {
   // mandateId is now REVOKED so prenotify will give MD01 — use mandateAM04Id
   const e2eId = ref("sim002");
-  const dueAtSim = await now() + minPre + 5n;
+  const dueAtSim = await now() + minPre + DUE_MARGIN;
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "prenotify", args: [mandateAM04Id, USDC("0.15"), dueAtSim, e2eId, "over cap"] });
   const result = await pub.call({ to: railAddr, data, account: creditorAccount.address });
   if (result.data && result.data !== "0x") throw { data: result.data };
