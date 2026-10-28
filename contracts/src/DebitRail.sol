@@ -528,12 +528,15 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         uint128 amt128 = col.amount;
         (uint128 locked128, uint128 held128) = _settleCoverage(col, m, m.token, amt128);
 
+        // _settleCoverage sets col.status = FINAL for B2B; SETTLED for CORE.
+        CollectionStatus finalStatus = col.status;
+
         TokenStats storage s = _stats[m.token];
         s.collected    += amt128;
         s.settledCount += 1;
 
         emit CollectionSettled(collectionId, amt128, locked128, held128);
-        return CollectionStatus.SETTLED;
+        return finalStatus;
     }
 
     /// @inheritdoc IDebitRail
@@ -720,6 +723,9 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     function refundDeadline(bytes32 collectionId) external view override returns (uint256) {
         Collection storage col = _collections[collectionId];
         if (col.settledAt == 0) return 0;
+        // B2B: no refund right — settled and immediately final; deadline = settledAt.
+        Mandate storage m = _mandates[col.mandateId];
+        if (m.scheme == Scheme.B2B) return uint256(col.settledAt);
         return uint256(col.settledAt) + refundWindow();
     }
 
@@ -891,9 +897,12 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
                 _pushToken(token, _creditors[m.creditorId].payout, payNow);
             }
         } else {
-            // B2B: full immediate payment, no lock, no hold
+            // B2B: full immediate payment, no lock, no hold.
+            // Go straight to FINAL — there is no refund right and therefore no release step.
+            // openExposure is never touched for B2B, so no underflow risk in release().
             col.locked = 0;
             col.held   = 0;
+            col.status = CollectionStatus.FINAL;
             locked128  = 0;
             held128    = 0;
             _pushToken(token, _creditors[m.creditorId].payout, uint256(amt128));
@@ -906,11 +915,13 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
 
     function _refund(bytes32 collectionId, address caller) internal {
         Collection storage col = _collections[collectionId];
-        if (col.status != CollectionStatus.SETTLED) revert WrongStatus();
 
+        // Check scheme BEFORE status: a B2B collection is FINAL (never SETTLED),
+        // so checking status first would give a misleading WrongStatus error.
         Mandate storage m = _mandates[col.mandateId];
-        if (caller != m.debtor)              revert NotDebtor();
         if (m.scheme == Scheme.B2B)          revert NoRefundRightB2B();
+        if (col.status != CollectionStatus.SETTLED) revert WrongStatus();
+        if (caller != m.debtor)              revert NotDebtor();
 
         uint256 deadline = uint256(col.settledAt) + refundWindow();
         if (block.timestamp >= deadline)     revert RefundWindowClosed();

@@ -311,10 +311,12 @@ contract DebitRailCollectionTest is DebitRailBase {
 
         vm.warp(_defaultDueAt());
         uint256 before = eurc.balanceOf(creditorPayout);
-        prod.collect(cid);
+        CollectionStatus st = prod.collect(cid);
 
+        // B2B → FINAL immediately (no refund window, nothing to release)
+        assertEq(uint8(st), uint8(CollectionStatus.FINAL));
         Collection memory col = prod.getCollection(cid);
-        assertEq(uint8(col.status), uint8(CollectionStatus.SETTLED));
+        assertEq(uint8(col.status), uint8(CollectionStatus.FINAL));
         assertEq(col.locked, 0);
         assertEq(col.held,   0);
 
@@ -324,6 +326,32 @@ contract DebitRailCollectionTest is DebitRailBase {
         // Coverage: no open exposure for B2B
         Coverage memory cov = prod.coverage(creditorId1, address(eurc));
         assertEq(cov.openExposure, 0);
+    }
+
+    function test_collect_b2b_isFinalImmediately() public {
+        uint128 amount = 50e6;
+        bytes32 cid    = _scheduleCollection(mandateIdB2B, amount, _defaultDueAt(), bytes32("B2B-FIN1"));
+        vm.warp(_defaultDueAt());
+        prod.collect(cid);
+
+        // Status is FINAL, not SETTLED
+        assertEq(uint8(prod.getCollection(cid).status), uint8(CollectionStatus.FINAL));
+        // settledAt is set
+        assertGt(prod.getCollection(cid).settledAt, 0);
+        // refundDeadline == settledAt for B2B (no refund window)
+        assertEq(prod.refundDeadline(cid), uint256(prod.getCollection(cid).settledAt));
+    }
+
+    function test_release_b2b_reverts_WrongStatus() public {
+        uint128 amount = 50e6;
+        bytes32 cid    = _scheduleCollection(mandateIdB2B, amount, _defaultDueAt(), bytes32("B2B-REL1"));
+        vm.warp(_defaultDueAt());
+        prod.collect(cid);
+
+        // B2B is already FINAL; release() requires SETTLED → WrongStatus
+        vm.warp(block.timestamp + prod.refundWindow() + 1);
+        vm.expectRevert(WrongStatus.selector);
+        prod.release(cid);
     }
 
     // ─── collect — returned cases ─────────────────────────────────────────────
