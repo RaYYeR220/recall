@@ -2,8 +2,10 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -16,9 +18,16 @@ import "./IDebitRail.sol";
 /// @dev    No owner, no admin, no fees, no upgrades, no pause.
 ///         No receive() or fallback() — the contract rejects all native-value transfers.
 ///         On Arc, USDC IS the native gas token (same balance, two views). We never use
-///         msg.value and every token flow goes through ERC-20 transferFrom/transfer.
+///         msg.value; every token flow goes through ERC-20 transferFrom/transfer.
+///
+///         Offer-signature rules:
+///           - Owner:    verified via OpenZeppelin SignatureChecker (accepts both EOA and ERC-1271).
+///           - Operators: EOA only, recovered via ECDSA.tryRecover (rejects high-s malleable sigs)
+///             then checked against the operator mapping. ERC-1271 operators are not supported
+///             because the operator mapping keys on address, not on a 1271 verifier result.
 contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
+    using SafeCast  for uint256;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Constants (legal seconds)
@@ -31,9 +40,17 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     uint256 private constant MAX_SCHEDULE_AHEAD = 400 days;
 
     // Scaled-value floors
-    uint256 private constant EXECUTION_WINDOW_FLOOR   = 15 minutes;
-    uint256 private constant SCHEDULE_AHEAD_FLOOR     = 1 days;
-    uint256 private constant MIN_PRENOTICE_FLOOR      = 1; // 1 second
+    uint256 private constant EXECUTION_WINDOW_FLOOR = 15 minutes;
+    uint256 private constant SCHEDULE_AHEAD_FLOOR   = 1 days;
+    uint256 private constant MIN_PRENOTICE_FLOOR    = 1; // 1 second
+
+    // ISO 20022 R-transaction reason codes
+    bytes4 private constant CODE_MD01 = bytes4("MD01"); // no valid mandate
+    bytes4 private constant CODE_AM04 = bytes4("AM04"); // insufficient funds
+    bytes4 private constant CODE_MS02 = bytes4("MS02"); // refused by debtor
+    bytes4 private constant CODE_MS03 = bytes4("MS03"); // reason not specified
+    bytes4 private constant CODE_MD06 = bytes4("MD06"); // refund requested by debtor
+    bytes4 private constant CODE_AM05 = bytes4("AM05"); // duplicate (unused here but defined for completeness)
 
     // EIP-712 type hashes
     bytes32 private constant OFFER_TYPEHASH =
@@ -44,14 +61,10 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         );
 
     bytes32 private constant ACCEPTANCE_TYPEHASH =
-        keccak256(
-            "MandateAcceptance(bytes32 offerHash,address debtor,uint64 deadline)"
-        );
+        keccak256("MandateAcceptance(bytes32 offerHash,address debtor,uint64 deadline)");
 
     bytes32 private constant DEBTOR_ACTION_TYPEHASH =
-        keccak256(
-            "DebtorAction(uint8 kind,bytes32 target,uint256 nonce,uint64 deadline)"
-        );
+        keccak256("DebtorAction(uint8 kind,bytes32 target,uint256 nonce,uint64 deadline)");
 
     // ─────────────────────────────────────────────────────────────────────────
     // Immutables
@@ -71,25 +84,25 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     // ─────────────────────────────────────────────────────────────────────────
 
     uint256 private _creditorCount;
-    mapping(uint256 => Creditor) private _creditors;
-    mapping(uint256 => mapping(address => bool)) private _operators;
+    mapping(uint256 => Creditor)                          private _creditors;
+    mapping(uint256 => mapping(address => bool))          private _operators;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Storage — reserves (packed into two 256-bit slots per (creditorId, token))
+    // Storage — reserves (two packed 256-bit slots per (creditorId, token))
     // ─────────────────────────────────────────────────────────────────────────
 
     struct ReserveSlot {
         uint128 total;
         uint128 locked;
         uint128 held;
-        /// @dev openExposure is CORE-only: equals reserveLocked + held for any CORE pair.
-        ///      Always 0 for B2B pairs. See Coverage.openExposure NatSpec.
+        /// @dev openExposure is CORE-only: always equals reserveLocked + held for any CORE pair.
+        ///      Always 0 for B2B pairs — B2B pays the merchant in full with no lock or hold.
         uint128 openExposure;
     }
-    mapping(uint256 => mapping(address => ReserveSlot)) private _reserves;
+    mapping(uint256 => mapping(address => ReserveSlot))   private _reserves;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Storage — global per-token accounting (shadow counters, O(1) updates)
+    // Storage — global per-token accounting (O(1) shadow counters)
     // ─────────────────────────────────────────────────────────────────────────
 
     mapping(address => uint256) private _reservesTotalByToken;
@@ -109,29 +122,29 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     // Storage — mandates
     // ─────────────────────────────────────────────────────────────────────────
 
-    mapping(bytes32 => Mandate)   private _mandates;
-    mapping(address => bytes32[]) private _mandatesByDebtor;
-    mapping(uint256 => bytes32[]) private _mandatesByCreditor;
+    mapping(bytes32 => Mandate)    private _mandates;
+    mapping(address  => bytes32[]) private _mandatesByDebtor;
+    mapping(uint256  => bytes32[]) private _mandatesByCreditor;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Storage — collections
     // ─────────────────────────────────────────────────────────────────────────
 
-    mapping(bytes32 => Collection)  private _collections;
-    mapping(bytes32 => bytes32[])   private _collectionsByMandate;
+    mapping(bytes32 => Collection) private _collections;
+    mapping(bytes32 => bytes32[])  private _collectionsByMandate;
 
-    // Period-cap usage: periodUsage[mandateId][periodIndex] = cumulative scheduled amount
+    // periodUsage[mandateId][periodIndex] = cumulative scheduled amount in that period
     mapping(bytes32 => mapping(uint256 => uint128)) private _periodUsage;
 
-    // e2eId uniqueness per creditor: _usedE2eIds[creditorId][e2eId]
+    // _usedE2eIds[creditorId][e2eId] — uniqueness per creditor (mirrors SEPA end-to-end ID scope)
     mapping(uint256 => mapping(bytes32 => bool)) private _usedE2eIds;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Storage — debtor nonces and claimable balances
     // ─────────────────────────────────────────────────────────────────────────
 
-    mapping(address => uint256)                         private _nonces;
-    mapping(address => mapping(address => uint256))     private _claimable;
+    mapping(address => uint256)                      private _nonces;
+    mapping(address => mapping(address => uint256))  private _claimable;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Storage — global stats per token
@@ -151,7 +164,7 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// @param eurc_      EURC token address on Arc
-    /// @param usdc_      USDC token address on Arc (0x3600...0000 — same balance as native gas)
+    /// @param usdc_      USDC token address on Arc (0x3600...0000 — same pool as native gas)
     /// @param timeScale_ 1 for prod, 10080 for demo (1 week → 1 minute)
     /// @param label_     Human label ("prod" or "demo")
     constructor(address eurc_, address usdc_, uint32 timeScale_, string memory label_)
@@ -159,10 +172,10 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     {
         require(eurc_ != address(0) && usdc_ != address(0), "ZeroAddress");
         require(timeScale_ > 0, "ZeroTimeScale");
-        eurc = eurc_;
-        usdc = usdc_;
+        eurc      = eurc_;
+        usdc      = usdc_;
         timeScale = timeScale_;
-        label = label_;
+        label     = label_;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -176,14 +189,14 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
 
     /// @inheritdoc IDebitRail
     function minPrenotice() public view override returns (uint256) {
-        uint256 scaled = MIN_PRENOTICE / timeScale;
-        return scaled < MIN_PRENOTICE_FLOOR ? MIN_PRENOTICE_FLOOR : scaled;
+        uint256 s = MIN_PRENOTICE / timeScale;
+        return s < MIN_PRENOTICE_FLOOR ? MIN_PRENOTICE_FLOOR : s;
     }
 
     /// @inheritdoc IDebitRail
     function executionWindow() public view override returns (uint256) {
-        uint256 scaled = EXECUTION_WINDOW / timeScale;
-        return scaled < EXECUTION_WINDOW_FLOOR ? EXECUTION_WINDOW_FLOOR : scaled;
+        uint256 s = EXECUTION_WINDOW / timeScale;
+        return s < EXECUTION_WINDOW_FLOOR ? EXECUTION_WINDOW_FLOOR : s;
     }
 
     /// @inheritdoc IDebitRail
@@ -193,8 +206,8 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
 
     /// @inheritdoc IDebitRail
     function scheduleAhead() public view override returns (uint256) {
-        uint256 scaled = MAX_SCHEDULE_AHEAD / timeScale;
-        return scaled < SCHEDULE_AHEAD_FLOOR ? SCHEDULE_AHEAD_FLOOR : scaled;
+        uint256 s = MAX_SCHEDULE_AHEAD / timeScale;
+        return s < SCHEDULE_AHEAD_FLOOR ? SCHEDULE_AHEAD_FLOOR : s;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -203,9 +216,7 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
 
     /// @inheritdoc IDebitRail
     function registerCreditor(string calldata name, address payout)
-        external
-        override
-        returns (uint256 creditorId)
+        external override returns (uint256 creditorId)
     {
         if (payout == address(0)) revert ZeroAddress();
         creditorId = ++_creditorCount;
@@ -230,12 +241,10 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     }
 
     /// @inheritdoc IDebitRail
-    /// @dev Reserve funding is open to anyone. Reserve and payout are independent concerns.
+    /// @dev Reserve funding is open to anyone; reserve management is separate from payout.
     ///      Anyone can top up a creditor's reserve without being the owner.
     function fundReserve(uint256 creditorId, address token, uint256 amount)
-        external
-        override
-        nonReentrant
+        external override nonReentrant
     {
         _requireKnownCreditor(creditorId);
         _requireAllowedToken(token);
@@ -244,7 +253,9 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
         ReserveSlot storage slot = _reserves[creditorId][token];
-        slot.total += uint128(amount);
+        // SafeCast: amount is the transferFrom'd value; overflow into uint128 is impossible
+        // for any real stablecoin supply, but we cast safely.
+        slot.total = (uint256(slot.total) + amount).toUint128();
         _reservesTotalByToken[token] += amount;
 
         emit ReserveFunded(creditorId, token, msg.sender, amount);
@@ -254,9 +265,7 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     /// @dev `to` may be any address — not restricted to the payout address.
     ///      This is intentional: reserve management is separate from settlement payout.
     function withdrawReserve(uint256 creditorId, address token, uint256 amount, address to)
-        external
-        override
-        nonReentrant
+        external override nonReentrant
     {
         _requireCreditorOwner(creditorId);
         _requireAllowedToken(token);
@@ -267,7 +276,7 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         uint256 free = uint256(slot.total) - uint256(slot.locked);
         if (amount > free) revert ReserveLocked();
 
-        slot.total -= uint128(amount);
+        slot.total = (uint256(slot.total) - amount).toUint128();
         _reservesTotalByToken[token] -= amount;
 
         _pushToken(token, to, amount);
@@ -281,7 +290,6 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         if (amount == 0) revert NothingToClaim();
         _claimable[msg.sender][token] = 0;
         _claimableByToken[token] -= amount;
-
         _pushToken(token, msg.sender, amount);
         emit Claimed(msg.sender, token, amount);
     }
@@ -292,48 +300,42 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
 
     /// @inheritdoc IDebitRail
     function hashOffer(MandateOffer calldata offer) public view override returns (bytes32) {
-        return _hashTypedDataV4(
-            keccak256(abi.encode(
-                OFFER_TYPEHASH,
-                offer.creditorId,
-                offer.token,
-                uint8(offer.scheme),
-                offer.oneOff,
-                offer.maxPerCollection,
-                offer.maxPerPeriod,
-                offer.periodLength,
-                offer.prenoticeLength,
-                offer.offerRef,
-                offer.termsHash,
-                offer.maxUses,
-                offer.validUntil
-            ))
-        );
+        return _hashTypedDataV4(keccak256(abi.encode(
+            OFFER_TYPEHASH,
+            offer.creditorId,
+            offer.token,
+            uint8(offer.scheme),
+            offer.oneOff,
+            offer.maxPerCollection,
+            offer.maxPerPeriod,
+            offer.periodLength,
+            offer.prenoticeLength,
+            offer.offerRef,
+            offer.termsHash,
+            offer.maxUses,
+            offer.validUntil
+        )));
     }
 
     /// @inheritdoc IDebitRail
     function hashAcceptance(MandateAcceptance calldata acc) public view override returns (bytes32) {
-        return _hashTypedDataV4(
-            keccak256(abi.encode(
-                ACCEPTANCE_TYPEHASH,
-                acc.offerHash,
-                acc.debtor,
-                acc.deadline
-            ))
-        );
+        return _hashTypedDataV4(keccak256(abi.encode(
+            ACCEPTANCE_TYPEHASH,
+            acc.offerHash,
+            acc.debtor,
+            acc.deadline
+        )));
     }
 
     /// @inheritdoc IDebitRail
     function hashDebtorAction(DebtorAction calldata a) public view override returns (bytes32) {
-        return _hashTypedDataV4(
-            keccak256(abi.encode(
-                DEBTOR_ACTION_TYPEHASH,
-                uint8(a.kind),
-                a.target,
-                a.nonce,
-                a.deadline
-            ))
-        );
+        return _hashTypedDataV4(keccak256(abi.encode(
+            DEBTOR_ACTION_TYPEHASH,
+            uint8(a.kind),
+            a.target,
+            a.nonce,
+            a.deadline
+        )));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -370,17 +372,12 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         bytes calldata debtorSig,
         PermitData calldata permit
     ) external override nonReentrant returns (bytes32 mandateId) {
-        // Attempt the permit; swallow the revert if someone front-ran it
+        // Attempt the permit; swallow the revert if someone front-ran it.
         try IERC20Permit(offer.token).permit(
-            acc.debtor,
-            address(this),
-            permit.value,
-            permit.deadline,
-            permit.v,
-            permit.r,
-            permit.s
+            acc.debtor, address(this),
+            permit.value, permit.deadline,
+            permit.v, permit.r, permit.s
         ) {} catch {}
-
         return _activate(offer, offerSig, acc, debtorSig);
     }
 
@@ -394,26 +391,235 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Collection stubs (implemented in next turn)
+    // Collections
     // ─────────────────────────────────────────────────────────────────────────
 
-    function prenotify(bytes32, uint128, uint64, bytes32, string calldata)
-        external pure override returns (bytes32) { revert("NOT_IMPLEMENTED"); }
+    /// @inheritdoc IDebitRail
+    function prenotify(
+        bytes32 mandateId,
+        uint128 amount,
+        uint64  dueAt,
+        bytes32 e2eId,
+        string calldata remittanceInfo
+    ) external override returns (bytes32 collectionId) {
+        Mandate storage m = _mandates[mandateId];
 
-    function refuse(bytes32) external pure override { revert("NOT_IMPLEMENTED"); }
+        // Mandate must be ACTIVE and not lapsed
+        if (m.status != MandateStatus.ACTIVE) revert MD01_NoValidMandate();
+        if (_isLapsed(mandateId))             revert MD01_NoValidMandate();
 
-    function cancel(bytes32) external pure override { revert("NOT_IMPLEMENTED"); }
+        _requireCreditorAgent(m.creditorId);
 
-    function collect(bytes32) external pure override returns (CollectionStatus) { revert("NOT_IMPLEMENTED"); }
+        if (amount == 0)                      revert ZeroAmount();
+        if (amount > m.maxPerCollection)      revert OverCollectionCap();
 
-    function refund(bytes32) external pure override { revert("NOT_IMPLEMENTED"); }
+        // Pre-notice: dueAt must be at least minPrenotice(scaled) seconds ahead
+        uint256 scaledPrenotice = uint256(m.prenoticeLength) / timeScale;
+        if (scaledPrenotice < MIN_PRENOTICE_FLOOR) scaledPrenotice = MIN_PRENOTICE_FLOOR;
+        if (dueAt < block.timestamp + scaledPrenotice) revert PrenoticeTooShort();
 
-    function release(bytes32) external pure override { revert("NOT_IMPLEMENTED"); }
+        // Schedule-ahead: dueAt must not be too far
+        if (dueAt > block.timestamp + scheduleAhead()) revert ScheduleTooFar();
 
-    function expire(bytes32) external pure override { revert("NOT_IMPLEMENTED"); }
+        // e2eId uniqueness per creditor
+        if (_usedE2eIds[m.creditorId][e2eId]) revert AM05_Duplicate();
 
-    function executeDebtorAction(DebtorAction calldata, address, bytes calldata)
-        external pure override { revert("NOT_IMPLEMENTED"); }
+        // Period cap
+        uint256 pidx = _periodIndexOf(mandateId, dueAt);
+        uint128 used = _periodUsage[mandateId][pidx];
+        if (uint256(used) + uint256(amount) > uint256(m.maxPerPeriod)) revert OverPeriodCap();
+
+        // OneOff: cannot schedule if there is already an open or settled collection
+        if (m.oneOff && _hasOpenOrSettled(mandateId)) revert OneOffBusy();
+
+        // Record
+        collectionId = keccak256(abi.encode(mandateId, e2eId));
+        // Guard against collectionId collision (should be impossible but check anyway)
+        if (_collections[collectionId].status != CollectionStatus.NONE) revert AM05_Duplicate();
+
+        _usedE2eIds[m.creditorId][e2eId] = true;
+        _periodUsage[mandateId][pidx] = used + amount;
+
+        _collections[collectionId] = Collection({
+            mandateId: mandateId,
+            e2eId:     e2eId,
+            amount:    amount,
+            dueAt:     dueAt,
+            settledAt: 0,
+            locked:    0,
+            held:      0,
+            status:    CollectionStatus.SCHEDULED,
+            code:      bytes4(0)
+        });
+        _collectionsByMandate[mandateId].push(collectionId);
+
+        emit CollectionScheduled(collectionId, mandateId, e2eId, amount, dueAt, remittanceInfo);
+    }
+
+    /// @inheritdoc IDebitRail
+    function refuse(bytes32 collectionId) external override {
+        Collection storage col = _collections[collectionId];
+        if (col.status != CollectionStatus.SCHEDULED) revert WrongStatus();
+
+        Mandate storage m = _mandates[col.mandateId];
+        if (msg.sender != m.debtor) revert NotDebtor();
+
+        _releasePeriodUsage(col);
+        col.status = CollectionStatus.REFUSED;
+        col.code   = CODE_MS02;
+        emit CollectionRefused(collectionId);
+    }
+
+    /// @inheritdoc IDebitRail
+    function cancel(bytes32 collectionId) external override {
+        Collection storage col = _collections[collectionId];
+        if (col.status != CollectionStatus.SCHEDULED) revert WrongStatus();
+
+        Mandate storage m = _mandates[col.mandateId];
+        _requireCreditorAgent(m.creditorId);
+
+        _releasePeriodUsage(col);
+        col.status = CollectionStatus.CANCELLED;
+        emit CollectionCancelled(collectionId);
+    }
+
+    /// @inheritdoc IDebitRail
+    /// @dev Never reverts for payer-side problems — those become RETURNED with an ISO reason code.
+    function collect(bytes32 collectionId) external override nonReentrant returns (CollectionStatus) {
+        Collection storage col = _collections[collectionId];
+        if (col.status != CollectionStatus.SCHEDULED) revert WrongStatus();
+        if (block.timestamp < col.dueAt)                              revert TooEarly();
+        if (block.timestamp > uint256(col.dueAt) + executionWindow()) revert ExecutionWindowPassed();
+        return _collectInner(collectionId);
+    }
+
+    /// @dev Inner logic for collect(), extracted to avoid stack-too-deep.
+    function _collectInner(bytes32 collectionId) internal returns (CollectionStatus) {
+        Collection storage col = _collections[collectionId];
+        Mandate    storage m   = _mandates[col.mandateId];
+
+        // Check mandate validity
+        if (m.status != MandateStatus.ACTIVE || _isLapsed(col.mandateId)) {
+            return _returnCollection(col, collectionId, CODE_MD01);
+        }
+
+        // Check debtor balance
+        if (IERC20(m.token).balanceOf(m.debtor) < col.amount) {
+            return _returnCollection(col, collectionId, CODE_AM04);
+        }
+
+        // Attempt inbound transferFrom (low-level: failure → RETURNED MS03)
+        {
+            (bool tfOk, bytes memory tfRet) = m.token.call(
+                abi.encodeWithSelector(IERC20.transferFrom.selector, m.debtor, address(this), uint256(col.amount))
+            );
+            if (!tfOk || !_decodeBoolReturn(tfRet)) {
+                return _returnCollection(col, collectionId, CODE_MS03);
+            }
+        }
+
+        // Settle
+        uint64 now64 = uint64(block.timestamp);
+        col.status       = CollectionStatus.SETTLED;
+        col.settledAt    = now64;
+        m.lastActivityAt = now64;
+        if (m.oneOff) m.status = MandateStatus.USED;
+
+        uint128 amt128 = col.amount;
+        (uint128 locked128, uint128 held128) = _settleCoverage(col, m, m.token, amt128);
+
+        TokenStats storage s = _stats[m.token];
+        s.collected    += amt128;
+        s.settledCount += 1;
+
+        emit CollectionSettled(collectionId, amt128, locked128, held128);
+        return CollectionStatus.SETTLED;
+    }
+
+    /// @inheritdoc IDebitRail
+    /// @dev CORE only. Within the refund window. Pays held first then locked from reserve.
+    function refund(bytes32 collectionId) external override nonReentrant {
+        _refund(collectionId, msg.sender);
+    }
+
+    /// @inheritdoc IDebitRail
+    function release(bytes32 collectionId) external override nonReentrant {
+        Collection storage col = _collections[collectionId];
+        if (col.status != CollectionStatus.SETTLED) revert WrongStatus();
+
+        uint256 deadline = uint256(col.settledAt) + refundWindow();
+        if (block.timestamp < deadline) revert RefundWindowOpen();
+
+        Mandate storage m = _mandates[col.mandateId];
+        address token     = m.token;
+        uint128 locked128 = col.locked;
+        uint128 held128   = col.held;
+        uint128 amt128    = col.amount;
+
+        col.status = CollectionStatus.FINAL;
+
+        ReserveSlot storage slot = _reserves[m.creditorId][token];
+        slot.locked       = (uint256(slot.locked)       - locked128).toUint128();
+        slot.held         = (uint256(slot.held)          - held128).toUint128();
+        slot.openExposure = (uint256(slot.openExposure)  - amt128).toUint128();
+
+        _lockedTotalByToken[token]   -= locked128;
+        _heldByToken[token]          -= held128;
+        _exposureTotalByToken[token] -= amt128;
+
+        // Pay held to merchant
+        if (held128 > 0) {
+            _pushToken(token, _creditors[m.creditorId].payout, held128);
+        }
+
+        emit CollectionReleased(collectionId, held128);
+    }
+
+    /// @inheritdoc IDebitRail
+    function expire(bytes32 collectionId) external override {
+        Collection storage col = _collections[collectionId];
+        if (col.status != CollectionStatus.SCHEDULED) revert WrongStatus();
+        if (block.timestamp <= uint256(col.dueAt) + executionWindow()) revert TooEarly();
+
+        _releasePeriodUsage(col);
+        col.status = CollectionStatus.EXPIRED;
+        emit CollectionExpired(collectionId);
+    }
+
+    /// @inheritdoc IDebitRail
+    /// @dev Anyone may submit. Nonce is consumed atomically.
+    function executeDebtorAction(
+        DebtorAction calldata a,
+        address debtorAddr,
+        bytes calldata sig
+    ) external override nonReentrant {
+        // Nonce check
+        if (a.nonce != _nonces[debtorAddr]) revert BadNonce();
+        _nonces[debtorAddr]++;
+
+        // Deadline
+        if (a.deadline < block.timestamp) revert SignatureExpired();
+
+        // Signature verification (EOA or ERC-1271)
+        bytes32 digest = hashDebtorAction(a);
+        if (!SignatureChecker.isValidSignatureNow(debtorAddr, digest, sig)) revert BadSignature();
+
+        // Dispatch
+        if (a.kind == ActionKind.REFUND) {
+            // target is a collectionId belonging to debtorAddr
+            Collection storage col = _collections[a.target];
+            if (_mandates[col.mandateId].debtor != debtorAddr) revert NotDebtor();
+            _refund(a.target, debtorAddr);
+        } else if (a.kind == ActionKind.REFUSE) {
+            Collection storage col = _collections[a.target];
+            if (_mandates[col.mandateId].debtor != debtorAddr) revert NotDebtor();
+            _refuseInternal(a.target, debtorAddr);
+        } else {
+            // REVOKE: target is a mandateId belonging to debtorAddr
+            if (_mandates[a.target].debtor != debtorAddr) revert NotDebtor();
+            _revoke(a.target, debtorAddr);
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Views
@@ -456,10 +662,10 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         external view override returns (Coverage memory c)
     {
         ReserveSlot storage slot = _reserves[creditorId][token];
-        c.reserveTotal   = slot.total;
-        c.reserveLocked  = slot.locked;
-        c.held           = slot.held;
-        c.openExposure   = slot.openExposure;
+        c.reserveTotal  = slot.total;
+        c.reserveLocked = slot.locked;
+        c.held          = slot.held;
+        c.openExposure  = slot.openExposure;
     }
 
     function claimable(address account, address token) external view override returns (uint256) {
@@ -470,8 +676,8 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         external view override
         returns (uint256 reserves, uint256 held, uint256 claimables)
     {
-        reserves  = _reservesTotalByToken[token];
-        held      = _heldByToken[token];
+        reserves   = _reservesTotalByToken[token];
+        held       = _heldByToken[token];
         claimables = _claimableByToken[token];
     }
 
@@ -505,10 +711,10 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         return _periodIndexOf(mandateId, at);
     }
 
-    function periodUsage(bytes32 mandateId, uint256 periodIndex)
+    function periodUsage(bytes32 mandateId, uint256 pIdx)
         external view override returns (uint256)
     {
-        return _periodUsage[mandateId][periodIndex];
+        return _periodUsage[mandateId][pIdx];
     }
 
     function refundDeadline(bytes32 collectionId) external view override returns (uint256) {
@@ -549,53 +755,51 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         MandateAcceptance calldata acc,
         bytes calldata debtorSig
     ) internal returns (bytes32 mandateId) {
-        // 1. Token
+        // 1. Token allowed
         _requireAllowedToken(offer.token);
 
         // 2. Creditor exists
         _requireKnownCreditor(offer.creditorId);
 
-        // 3. Terms validation
-        if (offer.maxPerCollection == 0)                  revert InvalidTerms();
-        if (offer.maxPerPeriod < offer.maxPerCollection)  revert InvalidTerms();
-        if (offer.periodLength == 0)                      revert InvalidTerms();
-        if (offer.prenoticeLength < MIN_PRENOTICE)        revert InvalidTerms();
+        // 3. Terms
+        if (offer.maxPerCollection == 0)                 revert InvalidTerms();
+        if (offer.maxPerPeriod < offer.maxPerCollection) revert InvalidTerms();
+        if (offer.periodLength == 0)                     revert InvalidTerms();
+        if (offer.prenoticeLength < MIN_PRENOTICE)       revert InvalidTerms();
 
-        // 4. Offer not cancelled
+        // 4. Not cancelled
         bytes32 offerHash = hashOffer(offer);
         if (_offerCancelled[offerHash]) revert OfferCancelled_();
 
-        // 5. Offer validUntil
+        // 5. validUntil
         if (offer.validUntil < block.timestamp) revert SignatureExpired();
 
         // 6. maxUses
         if (offer.maxUses > 0 && _offerUses[offerHash] >= offer.maxUses) revert OfferUsedUp();
 
-        // 7. Verify offer signature (owner or operator)
+        // 7. Verify offer signature
+        //    Owner: EOA or ERC-1271 via SignatureChecker.
+        //    Operator: EOA only, via ECDSA.tryRecover (rejects malleable high-s sigs).
         {
-            address owner    = _creditors[offer.creditorId].owner;
-            bool ownerOk     = SignatureChecker.isValidSignatureNow(owner,    offerHash, offerSig);
-            bool operatorOk  = false;
+            address owner   = _creditors[offer.creditorId].owner;
+            bool    ownerOk = SignatureChecker.isValidSignatureNow(owner, offerHash, offerSig);
             if (!ownerOk) {
-                // Recover signer and check operator mapping
-                // SignatureChecker doesn't expose the recovered address directly for EOA,
-                // so we check by trying every possible signer via the isOperator mapping.
-                // For EOA signatures we recover via ECDSA and check the operator map.
-                (address recovered,) = _tryRecover(offerHash, offerSig);
-                if (recovered != address(0) && _operators[offer.creditorId][recovered]) {
-                    operatorOk = true;
+                (address recovered, ECDSA.RecoverError err,) = ECDSA.tryRecover(offerHash, offerSig);
+                if (err != ECDSA.RecoverError.NoError ||
+                    recovered == address(0) ||
+                    !_operators[offer.creditorId][recovered]) {
+                    revert BadSignature();
                 }
             }
-            if (!ownerOk && !operatorOk) revert BadSignature();
         }
 
-        // 8. Acceptance: offerHash matches
+        // 8. Acceptance offerHash matches
         if (acc.offerHash != offerHash) revert BadSignature();
 
         // 9. Acceptance deadline
         if (acc.deadline < block.timestamp) revert SignatureExpired();
 
-        // 10. Verify debtor signature
+        // 10. Verify debtor signature (EOA or ERC-1271)
         bytes32 accHash = hashAcceptance(acc);
         if (!SignatureChecker.isValidSignatureNow(acc.debtor, accHash, debtorSig)) {
             revert BadSignature();
@@ -607,7 +811,6 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
 
         // 12. Record
         _offerUses[offerHash] += 1;
-
         uint64 now64 = uint64(block.timestamp);
         _mandates[mandateId] = Mandate({
             offerHash:        offerHash,
@@ -629,7 +832,10 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
         _mandatesByDebtor[acc.debtor].push(mandateId);
         _mandatesByCreditor[offer.creditorId].push(mandateId);
 
-        emit MandateActivated(mandateId, offerHash, offer.creditorId, acc.debtor, offer.token, uint8(offer.scheme));
+        emit MandateActivated(
+            mandateId, offerHash, offer.creditorId,
+            acc.debtor, offer.token, uint8(offer.scheme)
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -638,15 +844,160 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
 
     function _revoke(bytes32 mandateId, address caller) internal {
         Mandate storage m = _mandates[mandateId];
-        if (m.status == MandateStatus.NONE) revert MD01_NoValidMandate();
+        if (m.status == MandateStatus.NONE)   revert MD01_NoValidMandate();
         if (m.status != MandateStatus.ACTIVE) revert WrongStatus();
 
-        bool isDebtor  = (caller == m.debtor);
-        bool isOwner   = (caller == _creditors[m.creditorId].owner);
+        bool isDebtor = (caller == m.debtor);
+        bool isOwner  = (caller == _creditors[m.creditorId].owner);
         if (!isDebtor && !isOwner) revert NotDebtorOrCreditor();
 
         m.status = MandateStatus.REVOKED;
         emit MandateRevoked(mandateId, caller);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal — coverage split on SETTLED
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @dev Applies the CORE/B2B coverage split, updates per-creditor and global shadow counters,
+    ///      and pushes the immediately-payable portion to the creditor payout.
+    ///      Returns (locked, held) for event emission in collect().
+    function _settleCoverage(
+        Collection storage col,
+        Mandate storage m,
+        address token,
+        uint128 amt128
+    ) internal returns (uint128 locked128, uint128 held128) {
+        if (m.scheme == Scheme.CORE) {
+            ReserveSlot storage slot = _reserves[m.creditorId][token];
+            uint256 free = uint256(slot.total) - uint256(slot.locked);
+            locked128 = uint256(amt128) > free ? free.toUint128() : amt128;
+            held128   = amt128 - locked128;
+
+            col.locked = locked128;
+            col.held   = held128;
+
+            slot.locked       = (uint256(slot.locked)       + locked128).toUint128();
+            slot.held         = (uint256(slot.held)          + held128).toUint128();
+            slot.openExposure = (uint256(slot.openExposure)  + amt128).toUint128();
+
+            _lockedTotalByToken[token]   += locked128;
+            _heldByToken[token]          += held128;
+            _exposureTotalByToken[token] += amt128;
+
+            // Pay the non-held portion to the creditor payout now
+            uint256 payNow = uint256(amt128) - uint256(held128);
+            if (payNow > 0) {
+                _pushToken(token, _creditors[m.creditorId].payout, payNow);
+            }
+        } else {
+            // B2B: full immediate payment, no lock, no hold
+            col.locked = 0;
+            col.held   = 0;
+            locked128  = 0;
+            held128    = 0;
+            _pushToken(token, _creditors[m.creditorId].payout, uint256(amt128));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal — refund
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function _refund(bytes32 collectionId, address caller) internal {
+        Collection storage col = _collections[collectionId];
+        if (col.status != CollectionStatus.SETTLED) revert WrongStatus();
+
+        Mandate storage m = _mandates[col.mandateId];
+        if (caller != m.debtor)              revert NotDebtor();
+        if (m.scheme == Scheme.B2B)          revert NoRefundRightB2B();
+
+        uint256 deadline = uint256(col.settledAt) + refundWindow();
+        if (block.timestamp >= deadline)     revert RefundWindowClosed();
+
+        address token    = m.token;
+        uint128 amt128   = col.amount;
+        uint128 locked128= col.locked;
+        uint128 held128  = col.held;
+
+        col.status = CollectionStatus.REFUNDED;
+        col.code   = CODE_MD06;
+
+        // Unwind coverage
+        ReserveSlot storage slot = _reserves[m.creditorId][token];
+        slot.total        = (uint256(slot.total)       - locked128).toUint128();
+        slot.locked       = (uint256(slot.locked)      - locked128).toUint128();
+        slot.held         = (uint256(slot.held)         - held128).toUint128();
+        slot.openExposure = (uint256(slot.openExposure) - amt128).toUint128();
+
+        _reservesTotalByToken[token] -= locked128;
+        _lockedTotalByToken[token]   -= locked128;
+        _heldByToken[token]          -= held128;
+        _exposureTotalByToken[token] -= amt128;
+
+        // Stats
+        TokenStats storage s = _stats[token];
+        s.refunded      += amt128;
+        s.refundedCount += 1;
+
+        // Pay debtor the full amount (held from contract balance + locked from reserve)
+        _pushToken(token, m.debtor, uint256(amt128));
+
+        emit CollectionRefunded(collectionId, amt128);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal — refuse (shared by direct call and executeDebtorAction)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function _refuseInternal(bytes32 collectionId, address caller) internal {
+        Collection storage col = _collections[collectionId];
+        if (col.status != CollectionStatus.SCHEDULED) revert WrongStatus();
+        if (caller != _mandates[col.mandateId].debtor) revert NotDebtor();
+
+        _releasePeriodUsage(col);
+        col.status = CollectionStatus.REFUSED;
+        col.code   = CODE_MS02;
+        emit CollectionRefused(collectionId);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal — period usage helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function _releasePeriodUsage(Collection storage col) internal {
+        bytes32 mid  = col.mandateId;
+        uint256 pidx = _periodIndexOf(mid, col.dueAt);
+        uint128 used = _periodUsage[mid][pidx];
+        uint128 amt  = col.amount;
+        _periodUsage[mid][pidx] = used > amt ? used - amt : 0;
+    }
+
+    function _returnCollection(
+        Collection storage col,
+        bytes32 collectionId,
+        bytes4 code
+    ) internal returns (CollectionStatus) {
+        _releasePeriodUsage(col);
+        col.status = CollectionStatus.RETURNED;
+        col.code   = code;
+        _stats[_mandates[col.mandateId].token].returnedCount += 1;
+        emit CollectionReturned(collectionId, code);
+        return CollectionStatus.RETURNED;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal — oneOff busy check
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @dev Returns true if the mandate has any collection in SCHEDULED or SETTLED state.
+    function _hasOpenOrSettled(bytes32 mandateId) internal view returns (bool) {
+        bytes32[] storage ids = _collectionsByMandate[mandateId];
+        for (uint256 i; i < ids.length; ++i) {
+            CollectionStatus st = _collections[ids[i]].status;
+            if (st == CollectionStatus.SCHEDULED || st == CollectionStatus.SETTLED) return true;
+        }
+        return false;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -680,55 +1031,31 @@ contract DebitRail is IDebitRail, EIP712, ReentrancyGuardTransient {
 
     function _periodIndexOf(bytes32 mandateId, uint64 at) internal view returns (uint256) {
         Mandate storage m = _mandates[mandateId];
-        uint256 scaledPeriod = uint256(m.periodLength) / timeScale;
-        if (scaledPeriod == 0) scaledPeriod = 1;
-        return (uint256(at) - uint256(m.activatedAt)) / scaledPeriod;
+        uint256 sp = uint256(m.periodLength) / timeScale;
+        if (sp == 0) sp = 1;
+        return (uint256(at) - uint256(m.activatedAt)) / sp;
     }
 
-    /// @dev Push a token transfer; on revert, credit to claimable instead.
-    ///      Used for outbound payments to merchant payout and debtor refunds/releases.
+    /// @dev Push an ERC-20 transfer to `to`. On any failure (revert OR returned false),
+    ///      credit `to`'s claimable balance instead so the call never bubbles up.
+    ///      Pattern: low-level call; success iff ok && (no return data || abi.decode bool true).
     function _pushToken(address token, address to, uint256 amount) internal {
         if (amount == 0) return;
-        (bool ok,) = token.call(
+        (bool ok, bytes memory ret) = token.call(
             abi.encodeWithSelector(IERC20.transfer.selector, to, amount)
         );
-        // Check return value: some tokens return false instead of reverting
-        bool success = ok && (
-            token.code.length == 0 ||
-            // decode return bool if present
-            _decodeTransferResult(token, amount, to)
-        );
-        if (!success) {
-            _claimable[to][token] += amount;
-            _claimableByToken[token] += amount;
-        }
+        if (ok && _decodeBoolReturn(ret)) return; // success
+        // Failure: credit claimable
+        _claimable[to][token]    += amount;
+        _claimableByToken[token] += amount;
     }
 
-    /// @dev Try to decode the return value of a transfer call.
-    ///      Returns true if the call returned true (or no return data, which ERC-20 allows).
-    function _decodeTransferResult(address token, uint256, address) internal view returns (bool) {
-        // We already have the (ok, returndata) from the call above.
-        // This is a secondary helper — just return the code-size check result.
-        return token.code.length > 0;
-    }
-
-    /// @dev Attempt ECDSA recovery for operator-signature check.
-    ///      Returns (address(0), false) on malformed signatures.
-    function _tryRecover(bytes32 hash, bytes calldata sig)
-        internal pure returns (address recovered, bool ok)
-    {
-        if (sig.length != 65) return (address(0), false);
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-        assembly {
-            r := calldataload(sig.offset)
-            s := calldataload(add(sig.offset, 32))
-            v := byte(0, calldataload(add(sig.offset, 64)))
-        }
-        if (v < 27) v += 27;
-        if (v != 27 && v != 28) return (address(0), false);
-        recovered = ecrecover(hash, v, r, s);
-        ok = recovered != address(0);
+    /// @dev Decode the return data of a transfer/transferFrom call.
+    ///      ERC-20 allows no return data (returns nothing) which counts as success,
+    ///      or a bool return — true = success, false = failure.
+    function _decodeBoolReturn(bytes memory ret) internal pure returns (bool) {
+        if (ret.length == 0)   return true;   // no return data → success (bare ERC-20)
+        if (ret.length == 32)  return abi.decode(ret, (bool));
+        return false; // unexpected return length → treat as failure
     }
 }
