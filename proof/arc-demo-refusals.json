@@ -1,0 +1,139 @@
+{
+  "rail": "0x62A2E0a97138370F6b77823A1f1d4DF6CA507667",
+  "prodRail": "0x8a91eB44cF5d213C2230A42D1DF84585224075B0",
+  "run": "mvs5gi3y",
+  "log": [
+    {
+      "kind": "setup",
+      "label": "registerCreditor (demo)",
+      "hash": "0xc82cb3b4654c475e6cef36b2c258e18867d3efe0ec65334446e52477b6ad83d8",
+      "block": 28312800
+    },
+    {
+      "kind": "setup",
+      "label": "fundReserve 0.05 EURC",
+      "hash": "0xaed8ce27bb91bea5cf053d098467531b8c51d318165e3d710ccd6f4757397f3a",
+      "block": 28312818
+    },
+    {
+      "kind": "setup",
+      "label": "activate CORE (relayer, no gas)",
+      "hash": "0x9086b8de152e6b35accff24ff2bf43b7da691c1ec00ba2479c57d1e40b09861b",
+      "block": 28312844
+    },
+    {
+      "kind": "refusal",
+      "label": "demo rail rejects prod time scale",
+      "expect": "WrongTimeScale",
+      "reason": "WrongTimeScale",
+      "status": "reverted",
+      "hash": "0x334e8cd2c6e99145e418e44c9dcc08eed96d67f65c8b58089b5f83d93b803551",
+      "block": 28312853
+    },
+    {
+      "kind": "refusal",
+      "label": "demo-signed offer replayed on prod",
+      "expect": "BadSignature",
+      "reason": "BadSignature",
+      "status": "reverted",
+      "hash": "0x569f5e60459d54564ffbb1be0e9a671dfa0e2e1b8e2fdc382337f19daa3b2e80",
+      "block": 28312862
+    },
+    {
+      "kind": "refusal",
+      "label": "prenotify above the collection cap",
+      "expect": "OverCollectionCap",
+      "reason": "OverCollectionCap",
+      "status": "reverted",
+      "hash": "0x93c6dec429ca04750eb277f34e9c8d43d0b1bd578c7cee484e1bd9e2d2e27a51",
+      "block": 28312864
+    },
+    {
+      "kind": "setup",
+      "label": "prenotify 0.05 EURC due in 2 min",
+      "hash": "0xf23bd72d0b7f521b32fb9c994b7f15cb54de377c5774f7773cac47b65d921819",
+      "block": 28312865
+    },
+    {
+      "kind": "refusal",
+      "label": "collect before the due date",
+      "expect": "TooEarly",
+      "reason": "TooEarly",
+      "status": "reverted",
+      "hash": "0x7b23a2a02f9863d0017162fb0b22205878a67d1c60252a4b4bc39164da330356",
+      "block": 28312867
+    },
+    {
+      "kind": "setup",
+      "label": "collect (covered by reserve)",
+      "hash": "0x3937213349de840a2bdf4165c39f417572126bed927110a87a751472b94e5743",
+      "block": 28313122
+    },
+    {
+      "kind": "refusal",
+      "label": "withdraw the locked reserve",
+      "expect": "ReserveLocked",
+      "reason": "ReserveLocked",
+      "status": "reverted",
+      "hash": "0xc28b6e98a2135a76a4caec8fd56ced2100d6679adf02f552d9774c2705801319",
+      "block": 28313130
+    },
+    {
+      "kind": "setup",
+      "label": "activate B2B one-off (relayer)",
+      "hash": "0x5b1b832d0694ea5f9bfd324186af2b52357a1f4ab07573c95e323524f3bd91b8",
+      "block": 28313132
+    },
+    {
+      "kind": "setup",
+      "label": "prenotify 0.02 USDC (B2B)",
+      "hash": "0xb8e0dea5388b3510cfa446deaa32a353a09fa1d527569c97976a8f328662e4bc",
+      "block": 28313141
+    },
+    {
+      "kind": "setup",
+      "label": "collect B2B (final at once)",
+      "hash": "0x8ecd6261b135bd800ccbeee79dd27bcf1fd9125cef6bb9aa58779336cfdecb33",
+      "block": 28313251
+    },
+    {
+      "kind": "refusal",
+      "label": "refund a B2B collection",
+      "expect": "NoRefundRightB2B",
+      "reason": "NoRefundRightB2B",
+      "status": "reverted",
+      "hash": "0xf4c2ba79ce5cdd44289fb9ae965aae9b813417a8d25cc5610afb8ceec74d853f",
+      "block": 28313253
+    },
+    {
+      "kind": "refusal",
+      "label": "refund after the window closed",
+      "expect": "RefundWindowClosed",
+      "reason": "RefundWindowClosed",
+      "status": "reverted",
+      "hash": "0x6932af9b0fa6d9e894a9431774780f919b8476e066b5b983ca294777ceafda8a",
+      "block": 28314232
+    },
+    {
+      "kind": "setup",
+      "label": "release (window closed)",
+      "hash": "0x7268a9b1f758d3e6680f166e40dddedb0f84ddb984b508f29447f84a7d9e4cf8",
+      "block": 28314240
+    },
+    {
+      "kind": "setup",
+      "label": "debtor revokes the mandate",
+      "hash": "0x289a36dee791b83e334590c9ac9b39eb299b70107841752fb70e342832b18af3",
+      "block": 28314249
+    },
+    {
+      "kind": "refusal",
+      "label": "prenotify on a revoked mandate",
+      "expect": "MD01_NoValidMandate",
+      "reason": "MD01_NoValidMandate",
+      "status": "reverted",
+      "hash": "0x7c663c0a965059dc80d9932ef69ee89e2510ebe7dde1d045187c7dfcd129a424",
+      "block": 28314258
+    }
+  ]
+}

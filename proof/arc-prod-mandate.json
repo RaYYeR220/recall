@@ -1,0 +1,17 @@
+{
+  "rail": "0x8a91eB44cF5d213C2230A42D1DF84585224075B0",
+  "creditorId": "1",
+  "offerHash": "0x743b2c9696dc63231455c88e543e830ff6799d6bd6c2b006da36fa14338bbfb4",
+  "mandateId": "0x7121c72a008a8677e73235b9daf636fa282e000fd8ab043b7fcbb236cb8a569a",
+  "collectionId": "0xd0d927cb076abf81c37ade9f1a542b73b51742eb3d73a1dcdc4a71f260428787",
+  "e2eId": "0x4e572d50524f442d323032362d31312d30303100000000000000000000000000",
+  "dueAt": "1793275021",
+  "dueAtIso": "2026-10-29T11:57:01.000Z",
+  "terms": "By signing this mandate you authorise Northwind Gym to send instructions to collect payments from your wallet, and the Recall DebitRail contract to collect them in accordance with those instructions. Every amount and date is announced to you at least one day in advance. You are entitled to a refund of any collection within eight weeks of it, with no questions asked.",
+  "txs": {
+    "registerCreditor": "0xca02bd4867cee19ee1d8f874217199d8fb31e2173b932f6d77245206503cbc6a",
+    "fundReserve": "0xdf653a794c854fe6268c933804254e1cf23b5a1547bdaaad414003f35fb50a0f",
+    "activate": "0x15f156b87c98f7c44d3a77349712bd354d96ff748894fad32032e220e72153ca",
+    "prenotify": "0x5cf865455e2a0db04f3587c2f9084d7706f48d933f8f4721aa364894dab6e435"
+  }
+}
