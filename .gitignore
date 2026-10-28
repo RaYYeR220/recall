@@ -33,3 +33,6 @@ mockups/
 ui-prototypes/
 variants/
 screencast/
+
+# scratch scripts
+scripts/_*.ts

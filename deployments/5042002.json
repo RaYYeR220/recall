@@ -1,0 +1,16 @@
+{
+  "chainId": 5042002,
+  "network": "arc-testnet",
+  "deployer": "0xb439B11e5073DD6bBdA9aC5d9a96871ec25deA1d",
+  "block": 69414753,
+  "eurc": "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+  "usdc": "0x3600000000000000000000000000000000000000",
+  "prod": {
+    "rail": "0xE75f4d48B1Ab0f1e66B5b93bc207A0A22207521A",
+    "lens": "0x3F3f47cAc634FB3FCA50142612bC0b1CC285F05D"
+  },
+  "demo": {
+    "rail": "0x1b81ad8aA1E4b92FCD9B4f8a864b1225047CFECF",
+    "lens": "0x36157eCDA79956c6e864a0Aa22498B5f4493407a"
+  }
+}
