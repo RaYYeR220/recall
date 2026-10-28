@@ -1,0 +1,271 @@
+{
+  "network": "arc",
+  "instance": "demo",
+  "rail": "0x62A2E0a97138370F6b77823A1f1d4DF6CA507667",
+  "lens": "0xb97657400f385FE1db436B8c6924FF5C7c5C32cF",
+  "steps": [
+    {
+      "step": "a1: registerCreditor Northwind Gym",
+      "hash": "0x3ce734dd1d2a6f9e3c4f47043bee4c20048419e3a49238899e2c06b39ac13df7",
+      "detail": {
+        "creditorId": "3"
+      },
+      "link": "https://explorer.arc.io/tx/0x3ce734dd1d2a6f9e3c4f47043bee4c20048419e3a49238899e2c06b39ac13df7"
+    },
+    {
+      "step": "a2: approve EURC for fundReserve",
+      "hash": "0x99c68e970c045ee77513b5a511eb88e1b017a7d05f798dc73e6a53f70ada6c78",
+      "link": "https://explorer.arc.io/tx/0x99c68e970c045ee77513b5a511eb88e1b017a7d05f798dc73e6a53f70ada6c78"
+    },
+    {
+      "step": "a3: fundReserve 0.10 EURC",
+      "hash": "0xe7d0baca037dce8372b749b0af901eac541dbf123885da2b4fc0e9d213c2be6e",
+      "link": "https://explorer.arc.io/tx/0xe7d0baca037dce8372b749b0af901eac541dbf123885da2b4fc0e9d213c2be6e"
+    },
+    {
+      "step": "a4: approve USDC for fundReserve",
+      "hash": "0xc523a0fa9244c820b0dcf6b0c4f1d62352f2f0bdc2c2d3476bd49ede65da359e",
+      "link": "https://explorer.arc.io/tx/0xc523a0fa9244c820b0dcf6b0c4f1d62352f2f0bdc2c2d3476bd49ede65da359e"
+    },
+    {
+      "step": "a5: fundReserve 0.10 USDC",
+      "hash": "0x034cdc138b31f99c66b5db8a8ed54216b434358ba6f5142647570754390270d5",
+      "link": "https://explorer.arc.io/tx/0x034cdc138b31f99c66b5db8a8ed54216b434358ba6f5142647570754390270d5"
+    },
+    {
+      "step": "b1: creditor signs offer",
+      "detail": {
+        "offer": {
+          "creditorId": "3",
+          "token": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+          "scheme": 0,
+          "oneOff": false,
+          "maxPerCollection": "200000",
+          "maxPerPeriod": "400000",
+          "periodLength": 2592000,
+          "prenoticeLength": 86400,
+          "offerRef": "0x4e572d434f52452d6d76733377306a6500000000000000000000000000000000",
+          "termsHash": "0xe899417b62ea7d6d292ae01ad8fbc07990e224a556125984e57ddd5cb261f3ed",
+          "maxUses": 0,
+          "validUntil": "1793796255",
+          "timeScale": 10080,
+          "debtor": "0x0000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "step": "b2: relayer submits activateMandateWithPermit",
+      "hash": "0x1ddaac4e75faee4d52c25b2e9f79f6e7fa0a21a5065786e0a5dc16abc06c7c1f",
+      "detail": {
+        "mandateId": "0xa65608a1e8a70c5a05cdc520bb0891f40704813bb8929644748f220b48892c8d"
+      },
+      "link": "https://explorer.arc.io/tx/0x1ddaac4e75faee4d52c25b2e9f79f6e7fa0a21a5065786e0a5dc16abc06c7c1f"
+    },
+    {
+      "step": "c1: prenotify 0.05 EURC",
+      "hash": "0xaa7c80b370e7f7388822af484b934d1b03a8e7566d7e719da81e05a410d9eee7",
+      "detail": {
+        "collectionId": "0xe641bd2cdfa9f4d8d38f831e78713ad253caefd0a06b7bd36bd5eeebf15aab5f",
+        "dueAt": "1793191494"
+      },
+      "link": "https://explorer.arc.io/tx/0xaa7c80b370e7f7388822af484b934d1b03a8e7566d7e719da81e05a410d9eee7"
+    },
+    {
+      "step": "c2: debtor approves 0.05 EURC",
+      "hash": "0x07d8d6ea288563f07d7eaa2d68562af9413f7a4c95aad1be3a77ffdc30a4683d",
+      "link": "https://explorer.arc.io/tx/0x07d8d6ea288563f07d7eaa2d68562af9413f7a4c95aad1be3a77ffdc30a4683d"
+    },
+    {
+      "step": "c3: collect → SETTLED (fully covered)",
+      "hash": "0xc887bcc6cbeed3762b5af0fd713302897a3c55bbf21af898c9aa468b69dfbe4f",
+      "detail": {
+        "status": 6,
+        "locked": "0.05",
+        "held": "0"
+      },
+      "link": "https://explorer.arc.io/tx/0xc887bcc6cbeed3762b5af0fd713302897a3c55bbf21af898c9aa468b69dfbe4f"
+    },
+    {
+      "step": "d: relayer submits executeDebtorAction REFUND → REFUNDED",
+      "hash": "0x2ca983cd9c5a035af0855609aa3c9f808c1101d0d768f2024e62b6e20c3aa6e7",
+      "detail": {
+        "status": 7,
+        "debtorEurcBalance": "0.3"
+      },
+      "link": "https://explorer.arc.io/tx/0x2ca983cd9c5a035af0855609aa3c9f808c1101d0d768f2024e62b6e20c3aa6e7"
+    },
+    {
+      "step": "e1: prenotify 0.15 EURC (locked+held split)",
+      "hash": "0x4df2265f21127faf855ab3504960fb809c6d3c6c8146d05ce1218e1f563fa1db",
+      "detail": {
+        "collectionId": "0x8114bd1b3e663a6d1ae3c2672819f1d697c9065712b766c84ae1885ab072b27c"
+      },
+      "link": "https://explorer.arc.io/tx/0x4df2265f21127faf855ab3504960fb809c6d3c6c8146d05ce1218e1f563fa1db"
+    },
+    {
+      "step": "e2: debtor approves 0.15 EURC",
+      "hash": "0x57076f7db3700d10f2ad1e6869926bdedadc82d8056cfa699e66d954a6c887b7",
+      "link": "https://explorer.arc.io/tx/0x57076f7db3700d10f2ad1e6869926bdedadc82d8056cfa699e66d954a6c887b7"
+    },
+    {
+      "step": "e3: collect → SETTLED (locked + held split)",
+      "hash": "0x8fdbfee1fc443f4904b820fbbaab684534ecbaf9a315033f7ea9182ae0afc319",
+      "detail": {
+        "status": 6,
+        "locked": "0.05",
+        "held": "0.1",
+        "reserveLocked": "0.05",
+        "coverageHeld": "0.1"
+      },
+      "link": "https://explorer.arc.io/tx/0x8fdbfee1fc443f4904b820fbbaab684534ecbaf9a315033f7ea9182ae0afc319"
+    },
+    {
+      "step": "e4: release → FINAL (refund window closed)",
+      "hash": "0x1dcd431fc0bc4139e44e78d7417a9d7aec4a73425fc476e3b296c8fb8034af58",
+      "detail": {
+        "status": 8
+      },
+      "link": "https://explorer.arc.io/tx/0x1dcd431fc0bc4139e44e78d7417a9d7aec4a73425fc476e3b296c8fb8034af58"
+    },
+    {
+      "step": "f1: activate B2B one-off USDC mandate",
+      "hash": "0xa514e234908645c54adee0378231776bcd352ea0cffc8e6e49dc6add2de15ea1",
+      "detail": {
+        "mandateId": "0x8e772c4cdb99ef42f44790a9b51111acaf4db2828f58c563971797f5c5de9e4f"
+      },
+      "link": "https://explorer.arc.io/tx/0xa514e234908645c54adee0378231776bcd352ea0cffc8e6e49dc6add2de15ea1"
+    },
+    {
+      "step": "f2: prenotify 0.05 USDC",
+      "hash": "0xdb47c678f7dcdecb3fd85d35f53cba22ec07c5fb99621eac5712d33b0f0929af",
+      "detail": {
+        "collectionId": "0xcc10723bc48b1c2bea4aa7e143b9b710daaa9893878c12ecc09316ccc2df101b"
+      },
+      "link": "https://explorer.arc.io/tx/0xdb47c678f7dcdecb3fd85d35f53cba22ec07c5fb99621eac5712d33b0f0929af"
+    },
+    {
+      "step": "f3: debtor approves 0.05 USDC",
+      "hash": "0x55356e0eb67c332172dc1bc10d45ff8a4366d2351ff11cbda2a66dff3998497b",
+      "link": "https://explorer.arc.io/tx/0x55356e0eb67c332172dc1bc10d45ff8a4366d2351ff11cbda2a66dff3998497b"
+    },
+    {
+      "step": "f4: collect B2B → FINAL immediately",
+      "hash": "0x52a4a9a9107858b22189593b474b16bc494bfcdf1ad95e0e33f50665f9b1aafc",
+      "detail": {
+        "status": 8,
+        "code": "0x00000000"
+      },
+      "link": "https://explorer.arc.io/tx/0x52a4a9a9107858b22189593b474b16bc494bfcdf1ad95e0e33f50665f9b1aafc"
+    },
+    {
+      "step": "g1: activate mandate for debtor2 (no balance)",
+      "hash": "0x697b612c31b45763ccafe9ef2516f3285847f8fee86dae44a9c48e445e796c8a",
+      "detail": {
+        "mandateId": "0xa54a8453ac8824d6622bc63a88b27a76e27cfa217e3185872b4fd4d063d2fe25",
+        "debtor": "0x6d9a1c96099c54776A4419681E08b1cc2b43DA3c"
+      },
+      "link": "https://explorer.arc.io/tx/0x697b612c31b45763ccafe9ef2516f3285847f8fee86dae44a9c48e445e796c8a"
+    },
+    {
+      "step": "g2: prenotify 0.05 EURC for debtor2",
+      "hash": "0x3d33e5bfb51b0c9443e583dab0dc8994242020545aa5dba68c76dbba1d1a4da4",
+      "detail": {
+        "collectionId": "0x2cfb3088ea583465db0dd0eaf26c86ae492c5652834575cd1ed4e607885bf05a"
+      },
+      "link": "https://explorer.arc.io/tx/0x3d33e5bfb51b0c9443e583dab0dc8994242020545aa5dba68c76dbba1d1a4da4"
+    },
+    {
+      "step": "g3: collect → RETURNED AM04 (no balance)",
+      "hash": "0xd89ecf3ecd5e66634a25c597ffd21fb22c870729985da2bd6dfa76aac2c45d53",
+      "detail": {
+        "status": 5,
+        "code": "0x414d3034"
+      },
+      "link": "https://explorer.arc.io/tx/0xd89ecf3ecd5e66634a25c597ffd21fb22c870729985da2bd6dfa76aac2c45d53"
+    },
+    {
+      "step": "h1: prenotify for CORE mandate",
+      "hash": "0xb1d458bd8ea328d2039df2b0b9c6dc9f0e9480efb205163ce30bdcef8a442cff",
+      "detail": {
+        "collectionId": "0xd30b2ab9a83e154069eabecd69d6df51322905b57d1d8f8b48d8394acc4e9ef6"
+      },
+      "link": "https://explorer.arc.io/tx/0xb1d458bd8ea328d2039df2b0b9c6dc9f0e9480efb205163ce30bdcef8a442cff"
+    },
+    {
+      "step": "h2: debtor refuses collection via executeDebtorAction",
+      "hash": "0x357b95c0d50ce7eb8d754aa015bff194b3147759defae2cb7c9713f16680a74f",
+      "detail": {
+        "status": 2,
+        "code": "0x4d533032"
+      },
+      "link": "https://explorer.arc.io/tx/0x357b95c0d50ce7eb8d754aa015bff194b3147759defae2cb7c9713f16680a74f"
+    },
+    {
+      "step": "h3: debtor revokes mandate via executeDebtorAction",
+      "hash": "0x3a940a28ab121f3a70adf5397ed9a42f3675676eb144db6fefdd4f341c816469",
+      "detail": {
+        "mandateStatus": 2
+      },
+      "link": "https://explorer.arc.io/tx/0x3a940a28ab121f3a70adf5397ed9a42f3675676eb144db6fefdd4f341c816469"
+    },
+    {
+      "step": "SIMULATE collect too early (TooEarly)",
+      "detail": {
+        "revert": "unknown"
+      }
+    },
+    {
+      "step": "SIMULATE prenotify over period cap (OverPeriodCap)",
+      "detail": {
+        "revert": "unknown"
+      }
+    },
+    {
+      "step": "SIMULATE refund after window (RefundWindowClosed)",
+      "detail": {
+        "revert": "unknown"
+      }
+    },
+    {
+      "step": "SIMULATE withdraw locked reserve (ReserveLocked)",
+      "detail": {
+        "result": "no revert"
+      }
+    },
+    {
+      "step": "SIMULATE refund B2B collection (NoRefundRightB2B)",
+      "detail": {
+        "revert": "unknown"
+      }
+    },
+    {
+      "step": "health()",
+      "detail": {
+        "eurc": {
+          "balance": "0.2",
+          "reserves": "0.2",
+          "held": "0",
+          "claimables": "0",
+          "surplus": "0",
+          "lockedTotal": "0",
+          "exposureTotal": "0",
+          "i1": true,
+          "i2": true,
+          "i3": true
+        },
+        "usdc": {
+          "balance": "0.3",
+          "reserves": "0.3",
+          "held": "0",
+          "claimables": "0",
+          "surplus": "0",
+          "lockedTotal": "0",
+          "exposureTotal": "0",
+          "i1": true,
+          "i2": true,
+          "i3": true
+        }
+      }
+    }
+  ]
+}
