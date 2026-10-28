@@ -172,14 +172,16 @@ contract DebitRailCollectionTest is DebitRailBase {
             token:            address(eurc),
             scheme:           Scheme.CORE,
             oneOff:           false,
-            maxPerCollection: 100e6,
-            maxPerPeriod:     200e6,
-            periodLength:     uint32(30 days), // legal seconds; scaled → 30*86400/10080 = 257 s
+            maxPerCollection: 1e6,   // demo cap: <= 1e6
+            maxPerPeriod:     2e6,   // demo cap: <= 2e6
+            periodLength:     uint32(30 days), // legal seconds; scaled -> 30*86400/10080 = 257 s
             prenoticeLength:  uint32(1 days),
             offerRef:         bytes32("DEMO-REF"),
             termsHash:        keccak256("terms"),
             maxUses:          0,
-            validUntil:       uint64(block.timestamp + 365 days)
+            validUntil:       uint64(block.timestamp + 365 days),
+            timeScale:        10080,
+            debtor:           address(0)
         });
         bytes32 dmid = _activateMandate(demo, demoOffer, creditorOwnerKey, debtor, debtorKey);
 
@@ -193,7 +195,8 @@ contract DebitRailCollectionTest is DebitRailBase {
         uint64 dueAt = uint64(block.timestamp + 10);
 
         vm.prank(creditorOwner);
-        bytes32 cid = demo.prenotify(dmid, 100e6, dueAt, bytes32("DEMO-P1"), "");
+        // Amount must be <= maxPerCollection = 1e6 (demo safety cap)
+        bytes32 cid = demo.prenotify(dmid, 1e6, dueAt, bytes32("DEMO-P1"), "");
 
         // period index 0 is the first period (activatedAt), period 1 starts at activatedAt + scaledPeriod
         assertEq(demo.periodIndexOf(dmid, uint64(dm.activatedAt)), 0);       // period 0
@@ -493,29 +496,28 @@ contract DebitRailCollectionTest is DebitRailBase {
 
         // Deploy a fresh rail that accepts this token (as the "eurc" slot)
         DebitRail testRail = new DebitRail(
-            address(rft),   // eurc slot — the token we test with
+            address(rft),   // eurc slot -- the token we test with
             address(usdc),  // usdc slot (unused in this test)
             1,
+            "Recall DebitRail",
             "test"
         );
 
         vm.startPrank(creditorOwner);
         uint256 rcid = testRail.registerCreditor("Merchant RFF", creditorPayout);
-        // fundReserve uses safeTransferFrom — this works because transferFrom is normal
+        // fundReserve uses safeTransferFrom -- this works because transferFrom is normal on RFF
         rft.approve(address(testRail), 500e6);
         testRail.fundReserve(rcid, address(rft), 500e6);
         vm.stopPrank();
 
-        // withdrawReserve calls _pushToken(token, to, amount)
-        // _pushToken calls token.transfer() which returns false → credits claimable[to][token]
+        // withdrawReserve now uses _pushTokenStrict, which reverts TransferFailed (not claimable).
         vm.prank(creditorOwner);
+        vm.expectRevert(TransferFailed.selector);
         testRail.withdrawReserve(rcid, address(rft), 100e6, creditorOwner);
 
-        // Reserve was debited, but transfer returned false → amount in claimable, not wallet
-        assertEq(testRail.claimable(creditorOwner, address(rft)), 100e6);
-        // The rail's accounting is correct: reserveTotal decreased by 100e6
+        // Reserve accounting unchanged (revert rolled it back)
         Coverage memory cov = testRail.coverage(rcid, address(rft));
-        assertEq(cov.reserveTotal, 400e6);
+        assertEq(cov.reserveTotal, 500e6);
     }
 
     // ─── oneOff ───────────────────────────────────────────────────────────────

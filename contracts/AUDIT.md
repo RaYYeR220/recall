@@ -100,13 +100,83 @@
 
 ---
 
+---
+
+## Second Review — Pre-mainnet Changes (this turn)
+
+The following findings were identified during review of the 8-item pre-mainnet change list and resolved in the same turn.
+
+---
+
+### [M-04] EIP-7702 delegation makes `isContract(signer)` unreliable for offer-sig routing
+**Severity:** Medium
+**Status:** Fixed (this turn)
+**Description:** The original `_isValidSig` called `SignatureChecker.isValidSignatureNow` for all signers. Under EIP-7702, an EOA can temporarily have code (the delegated account's bytecode) but must still be validated as an EOA. Routing a delegated EOA through ERC-1271 causes the call to land on the delegation target, which may not implement `isValidSignature` or may implement it in a way that accepts arbitrary messages — breaking the security assumption that only the EOA's private key authorises the offer.
+**Fix:** `_isValidSig` now uses `ECDSA.tryRecover` first; if the recovered signer matches, the signature is accepted regardless of code presence. The ERC-1271 path is taken only when the signer is a contract AND ECDSA recovery does not match. This is the EIP-7702-safe ordering.
+**Regression test:** `test_offerSig_eip7702_delegatedEOA_recoversViaECDSA` (Change-1 suite).
+
+---
+
+### [M-05] Demo rail had no hard caps on collection amounts
+**Severity:** Medium
+**Status:** Fixed (this turn)
+**Description:** The demo rail accepted any `maxPerCollection` and `maxPerPeriod` values. A creditor could activate a production-sized mandate (e.g. 10 000 USDC per collection) on the demo rail, draining a debtor's testnet funds or creating misleading reserve utilisation. The demo rail was also constructed with the same domain name as prod, making EIP-712 signatures interchangeable between the two instances on the same chain.
+**Fix:** Constructor now accepts a `domainName_` parameter (non-empty, validated at construction). The demo deployer passes a distinct name. `activateMandate` / `activateMandateWithPermit` enforce hard caps of `maxPerCollection ≤ 1e6` (1 EURC/USDC) and `maxPerPeriod ≤ 2e6` (2 EURC/USDC) when `IS_DEMO == true`. Constructor validates code presence at both token addresses so a misconfiguration is caught at deploy time.
+**Regression tests:** `test_demo_hardCap_maxPerCollection_enforced`, `test_demo_hardCap_maxPerPeriod_enforced`, `test_demo_below_cap_succeeds` (Change-2 suite).
+
+---
+
+### [L-05] Open offers could be activated by unintended debtors
+**Severity:** Low
+**Status:** Fixed (this turn)
+**Description:** An offer with `debtor == address(0)` is an open offer anyone can accept. Adding an optional `debtor` field to `MandateOffer` allows the creditor to restrict the offer to a single address without deploying a separate creditor or off-chain whitelist. Without this, a race condition exists: another party can front-run a `delegated` activation by submitting their own acceptance signature before the intended debtor's transaction lands.
+**Fix:** `MandateOffer` gains a `debtor` field. When non-zero, `activateMandate` reverts `NotOfferedDebtor` if the acceptance signer is not the named address. Zero remains open.
+**Regression tests:** `test_boundOffer_wrongDebtor_reverts`, `test_boundOffer_rightDebtor_activates`, `test_openOffer_anyDebtor_activates` (Change-3 suite).
+
+---
+
+### [L-06] `activateMandateWithPermit` called permit even when the token was not an allowed token
+**Severity:** Low
+**Status:** Fixed (this turn)
+**Description:** The original permit path called `permit(...)` on an arbitrary `offer.token` address before checking whether the token was in the allowed set. An adversarial creditor could construct an offer pointing at any ERC-20 (including a token with a malicious `permit`) and trick a debtor into signing a permit for it. Additionally, if the mandate was already active, the call would revert `DuplicateMandate` after the permit was already consumed.
+**Fix:** `_requireAllowedToken(offer.token)` is now called before the permit try/catch. An already-active mandate returns the existing `mandateId` rather than reverting. After the permit try/catch, `allowance(debtor, address(this)) >= permit.value` is required, else `PermitFailed`.
+**Regression tests:** `test_permitPath_disallowedToken_reverts`, `test_permitPath_alreadyActive_returnsExistingId`, `test_permitPath_permitFails_reverts` (Change-4 suite).
+
+---
+
+### [L-07] `claimFor` missing; `claim`/`withdrawReserve` silently dropped failed transfers
+**Severity:** Low
+**Status:** Fixed (this turn)
+**Description:** There was no `claimFor(creditor, token)` helper, requiring the creditor's payout address to initiate its own claim. More critically, `withdrawReserve` used `_pushToken` (soft fail with claimable fallback) rather than strict revert on transfer failure, meaning a blocklisted payout address would silently accumulate a claimable balance the creditor would not see in normal accounting. `claim` also used soft-fail, meaning a recipient who self-blocked could never drain their claimable.
+**Fix:** Added `claimFor(address creditor, address token)` callable by anyone, which pays the creditor's registered payout address. `claim` and `claimFor` now use `_pushTokenStrict` (reverts `TransferFailed` on failure) — no re-credit on failure. `withdrawReserve` also uses `_pushTokenStrict`. The soft-fail `_pushToken` with claimable fallback is retained only for `collect`, `refund`, and `release` payouts where a blocked payout must not freeze the protocol.
+**Regression tests:** `test_claimFor_pays_payout`, `test_claimFor_zeroClaimable_reverts`, `test_withdrawReserve_transferFail_reverts` (Change-5 suite).
+
+---
+
+### [I-05] One-off mandate loop replaced with O(1) counter; lens pagination added
+**Severity:** Informational
+**Status:** Fixed (this turn)
+**Description:** `_hasOpenOrSettled` iterated `_collectionsOfMandate` which, while bounded for one-off mandates, is O(n) and relies on the invariant that one-off mandates have at most one entry. The new `_openCount[mandateId]` shadow counter is O(1). `RailLens.debtorView` previously returned all mandates in one call; `collectionsPage` was also absent, making high-collection creditors unqueryable from a view call without gas limits. Addressed by adding `limit`/`offset` to `debtorView` and a new `collectionsPage(creditorId, token, offset, limit)`.
+**Regression tests:** `test_debtorView_pagination`, `test_collectionsPage_paginates`, `test_collectionsOpenCount_increments`, `test_mandateView_collectionCount_matches` (Change-6 suite).
+
+---
+
+### [I-06] `lastActivityAt` not updated when `collect` produces RETURNED
+**Severity:** Informational
+**Status:** Fixed (this turn)
+**Description:** A mandate whose collections repeatedly return RETURNED (AM04/MS03 — no balance or no allowance) would not update `lastActivityAt`, causing the lapse clock to advance based on the last *successful* collect or activate. This could lapse a mandate while the creditor is actively attempting collection, which is inconsistent with the SEPA analogue where a returned debit resets the lapse window.
+**Fix:** `collect()` now sets `m.lastActivityAt = uint64(block.timestamp)` for RETURNED status, matching the existing update for SETTLED.
+**Regression tests:** `test_lastActivityAt_updatedOnReturned_collect_failedTransfer`, `test_lastActivityAt_updatedOnSettled_collect` (Change-7 suite).
+
+---
+
 ## Summary
 
 | Severity | Count | Fixed | Acknowledged |
 |---|---|---|---|
 | High | 1 | 1 | 0 |
-| Medium | 3 | 3 | 0 |
-| Low | 4 | 2 | 2 |
-| Informational | 4 | 0 | 4 |
+| Medium | 5 | 5 | 0 |
+| Low | 9 | 7 | 2 |
+| Informational | 6 | 2 | 4 |
 
-All High and Medium findings are fixed. The two acknowledged Low findings match intentional spec behaviour.
+All High and Medium findings are fixed. The two acknowledged Low findings (L-01, L-02) match intentional spec behaviour and remain unchanged.

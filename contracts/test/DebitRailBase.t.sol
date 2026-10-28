@@ -62,8 +62,8 @@ abstract contract DebitRailBase is Test {
         eurc = new MockFiatToken("EURC", "EURC");
         usdc = new MockFiatToken("USDC", "USDC");
 
-        prod = new DebitRail(address(eurc), address(usdc), 1,     "prod");
-        demo = new DebitRail(address(eurc), address(usdc), 10080, "demo");
+        prod = new DebitRail(address(eurc), address(usdc), 1,     "Recall DebitRail", "prod");
+        demo = new DebitRail(address(eurc), address(usdc), 10080, "Recall DebitRail DEMO (1 week = 1 minute)", "demo");
 
         // Fund actors
         eurc.mint(debtor,  1_000e6);
@@ -145,7 +145,9 @@ abstract contract DebitRailBase is Test {
             offerRef:         bytes32("REF-001"),
             termsHash:        keccak256("terms"),
             maxUses:          0,
-            validUntil:       uint64(block.timestamp + 365 days)
+            validUntil:       uint64(block.timestamp + 365 days),
+            timeScale:        1,       // prod instance
+            debtor:           address(0) // open offer
         });
     }
 

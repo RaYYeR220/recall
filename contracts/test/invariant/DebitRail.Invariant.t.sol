@@ -30,8 +30,8 @@ contract DebitRailInvariantTest is Test {
         // For simplicity the handler uses a single creditorOwner = makeAddr("creditorOwner").
         // We re-deploy with the handler's address as actual owner by letting the handler call
         // registerCreditor, which it does in its constructor.
-        prod = new DebitRail(address(eurc), address(usdc), 1,     "prod");
-        demo = new DebitRail(address(eurc), address(usdc), 10080, "demo");
+        prod = new DebitRail(address(eurc), address(usdc), 1,     "Recall DebitRail", "prod");
+        demo = new DebitRail(address(eurc), address(usdc), 10080, "Recall DebitRail DEMO (1 week = 1 minute)", "demo");
 
         handler = new InvariantHandler(prod, demo, eurc, usdc);
 

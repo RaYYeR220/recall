@@ -314,7 +314,7 @@ contract DebitRailRefundTest is DebitRailBase {
         reserve = uint128(bound(reserve, 0,    500e6));
 
         // Reset state: re-deploy rail
-        DebitRail fuzzRail = new DebitRail(address(eurc), address(usdc), 1, "fuzz");
+        DebitRail fuzzRail = new DebitRail(address(eurc), address(usdc), 1, "Recall DebitRail", "fuzz");
 
         vm.startPrank(creditorOwner);
         uint256 fcid = fuzzRail.registerCreditor("Fuzz Merchant", creditorPayout);
@@ -336,7 +336,9 @@ contract DebitRailRefundTest is DebitRailBase {
             offerRef:         bytes32("FUZZ"),
             termsHash:        keccak256("fuzz"),
             maxUses:          0,
-            validUntil:       uint64(block.timestamp + 365 days)
+            validUntil:       uint64(block.timestamp + 365 days),
+            timeScale:        1,
+            debtor:           address(0)
         });
         bytes32 fmid = _activateMandate(fuzzRail, offer, creditorOwnerKey, debtor, debtorKey);
 

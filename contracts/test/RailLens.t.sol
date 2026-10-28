@@ -107,14 +107,15 @@ contract RailLensTest is DebitRailBase {
         vm.warp(due1);
         prod.collect(cid1);
 
-        RailLens.MandateView[] memory views = lens.debtorView(debtor);
+        (RailLens.MandateView[] memory views,) = lens.debtorView(debtor, 0, 0);
 
         // At least the one mandate from base setUp
         bool found = false;
         for (uint256 i; i < views.length; i++) {
             if (views[i].id == mid) {
                 found = true;
-                assertEq(views[i].collections.length, 2, "should have 2 collections");
+                assertEq(views[i].collectionCount, 2, "should have 2 total collections");
+                assertEq(views[i].collections.length, 2, "both fit in newest-10 window");
                 break;
             }
         }
@@ -122,9 +123,8 @@ contract RailLensTest is DebitRailBase {
     }
 
     function test_debtorView_emptyForUnknownDebtor() public view {
-        // Use a fixed address that was never registered as a debtor
         address nobody = address(0xDEAD);
-        RailLens.MandateView[] memory views = lens.debtorView(nobody);
+        (RailLens.MandateView[] memory views,) = lens.debtorView(nobody, 0, 0);
         assertEq(views.length, 0);
     }
 
