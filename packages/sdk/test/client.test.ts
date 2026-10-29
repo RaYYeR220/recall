@@ -284,7 +284,7 @@ describe("relay", () => {
       network: "arc",
       instance: "demo",
       publicClient: {} as never,
-      relayUrl: "https://relay.example/api/",
+      relayUrl: "https://relay.example/api/relay",
       fetch: fetchMock,
     });
     return { client, calls };
@@ -298,9 +298,10 @@ describe("relay", () => {
     const { client, calls } = relayClient(() => Response.json({ txHash: TX }));
     const hash = await client.relayDebtorAction(action, debtorAddr, "0x1234");
     expect(hash).toBe(TX as Hex);
-    expect(calls[0]?.url).toBe("https://relay.example/api/debtor-action");
+    expect(calls[0]?.url).toBe("https://relay.example/api/relay");
     expect(calls[0]?.init.method).toBe("POST");
     const body = JSON.parse(calls[0]?.init.body as string) as Record<string, unknown>;
+    expect(body["kind"]).toBe("debtor-action");
     expect(body["action"]).toEqual({ kind: 0, target: action.target, nonce: "3", deadline: "1900000000" });
     expect(body["debtor"]).toBe(debtorAddr);
     expect(body["instance"]).toBe("demo");
@@ -313,8 +314,9 @@ describe("relay", () => {
     const acceptance = { offerHash: bytes32("11"), debtor: debtorAddr, deadline: 5n };
     const permit = { value: 7n, deadline: 9n, v: 27, r: bytes32("01"), s: bytes32("02") };
     await client.relayActivate(offer, "0xaa", acceptance, "0xbb", permit);
-    expect(calls[0]?.url).toBe("https://relay.example/api/activate");
-    const body = JSON.parse(calls[0]?.init.body as string) as { offer: Record<string, unknown>; permit: Record<string, unknown> };
+    expect(calls[0]?.url).toBe("https://relay.example/api/relay");
+    const body = JSON.parse(calls[0]?.init.body as string) as { kind: string; offer: Record<string, unknown>; permit: Record<string, unknown> };
+    expect(body.kind).toBe("activate");
     expect(body.offer["maxPerCollection"]).toBe("100000000");
     expect(body.offer["debtor"]).toBe(ZERO_ADDRESS);
     expect(body.permit["value"]).toBe("7");
@@ -331,6 +333,36 @@ describe("relay", () => {
   test("a response without a tx hash is an error", async () => {
     const { client } = relayClient(() => Response.json({ ok: true }));
     expect((await rejection(client.relayDebtorAction(action, debtorAddr, "0x12"))).message).toMatch(/txHash/);
+  });
+
+  test("relayPermit POSTs kind permit with the spender set to the rail", async () => {
+    const { client, calls } = relayClient(() => Response.json({ txHash: TX }));
+    const permit = { value: 0n, deadline: 9n, v: 28, r: bytes32("01"), s: bytes32("02") };
+    await client.relayPermit("0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1", debtorAddr, permit);
+    const body = JSON.parse(calls[0]?.init.body as string) as Record<string, unknown>;
+    expect(body["kind"]).toBe("permit");
+    expect(body["spender"]).toBe(client.rail);
+    expect((body["permit"] as Record<string, unknown>)["value"]).toBe("0");
+  });
+
+  test("an HTML answer (a dev server with no relay) is reported as unavailable", async () => {
+    const { client } = relayClient(() => new Response("<!doctype html><html></html>", { status: 200 }));
+    const err = await rejection(client.relayDebtorAction(action, debtorAddr, "0x12"));
+    expect(err).toBeInstanceOf(RelayError);
+    expect(err.message).toMatch(/not available/);
+  });
+
+  test("a network failure becomes a RelayError with status 0", async () => {
+    const client = createRailClient({
+      network: "arc",
+      instance: "prod",
+      publicClient: {} as never,
+      relayUrl: "/api/relay",
+      fetch: (() => Promise.reject(new Error("offline"))) as unknown as typeof fetch,
+    });
+    const err = await rejection(client.relayDebtorAction(action, debtorAddr, "0x12"));
+    expect(err).toBeInstanceOf(RelayError);
+    expect((err as RelayError).status).toBe(0);
   });
 
   test("without a relayUrl, relaying is refused", async () => {

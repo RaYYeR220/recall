@@ -99,6 +99,14 @@ interface Wire {
  * (`#r=...`), which browsers never send to a server. `decodeCheckoutLink` also accepts `?r=...`.
  */
 export function encodeCheckoutLink(baseUrl: string, payload: CheckoutLinkPayload): string {
+  const url = new URL(baseUrl);
+  url.search = "";
+  url.hash = `${PARAM}=${encodeCheckoutToken(payload)}`;
+  return url.toString();
+}
+
+/** The base64url JSON payload on its own, for apps that carry it in a path segment (`/m/<token>`) instead of the fragment. */
+export function encodeCheckoutToken(payload: CheckoutLinkPayload): string {
   const o = payload.offer;
   const wire: Wire = {
     v: LINK_VERSION,
@@ -124,10 +132,7 @@ export function encodeCheckoutLink(baseUrl: string, payload: CheckoutLinkPayload
     c: payload.creditorName,
     t: payload.terms,
   };
-  const url = new URL(baseUrl);
-  url.search = "";
-  url.hash = `${PARAM}=${toBase64Url(JSON.stringify(wire))}`;
-  return url.toString();
+  return toBase64Url(JSON.stringify(wire));
 }
 
 // ── decode + shape verification ──────────────────────────────────────────────
@@ -206,7 +211,11 @@ function extractParam(url: string): string {
  * with the instance named in the link. It does NOT check the signature: use `verifyOfferSignature`.
  */
 export function decodeCheckoutLink(url: string): CheckoutLinkPayload {
-  const encoded = extractParam(url);
+  return decodeCheckoutToken(extractParam(url));
+}
+
+/** Same checks as `decodeCheckoutLink`, for a bare token (a path segment or the value of `#r=`). */
+export function decodeCheckoutToken(encoded: string): CheckoutLinkPayload {
   if (encoded.length > MAX_ENCODED_CHARS) fail("Checkout link is too large.");
   let raw: unknown;
   try {

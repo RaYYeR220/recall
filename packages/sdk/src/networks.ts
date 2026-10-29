@@ -115,6 +115,7 @@ export function addressUrl(network: RailNetwork, address: string): string {
 }
 
 interface DeploymentJson {
+  block: number;
   prod: { rail: string; lens: string };
   demo: { rail: string; lens: string };
 }
@@ -137,4 +138,10 @@ export function railAddresses(network: RailNetwork): Record<RailInstance, { rail
   // oxlint-disable-next-line typescript/no-unnecessary-condition -- guards untyped callers
   if (!a) throw new Error(`Unknown Recall network "${String(network)}". Use "arc" or "arc-testnet".`);
   return a;
+}
+
+/** Block the rails were deployed in. Nothing about them exists before it, so no event scan needs to start earlier. */
+export function deploymentBlock(network: RailNetwork): bigint {
+  const json = network === "arc" ? arcMainnetDeployment : arcTestnetDeployment;
+  return BigInt(json.block);
 }

@@ -1,6 +1,13 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { createRailClient } from "../src/client";
-import { CheckoutLinkError, decodeCheckoutLink, encodeCheckoutLink, verifyOfferSignature } from "../src/links";
+import {
+  CheckoutLinkError,
+  decodeCheckoutLink,
+  decodeCheckoutToken,
+  encodeCheckoutLink,
+  encodeCheckoutToken,
+  verifyOfferSignature,
+} from "../src/links";
 import { mandateText, refToBytes32, termsHash } from "../src/terms";
 import { Scheme, ZERO_ADDRESS, type MandateOffer } from "../src/types";
 import { SAMPLE_SIG, sampleOffer } from "./fixtures";
@@ -64,6 +71,14 @@ describe("checkout links", () => {
     const url = encodeCheckoutLink(BASE, payload());
     const data = new URL(url).hash.slice(3);
     expect(decodeCheckoutLink(`${BASE}?r=${data}`)).toEqual(payload());
+  });
+
+  test("the bare token round-trips and matches the fragment of the link", () => {
+    const p = payload();
+    const token = encodeCheckoutToken(p);
+    expect(decodeCheckoutToken(token)).toEqual(p);
+    expect(new URL(encodeCheckoutLink(BASE, p)).hash).toBe(`#r=${token}`);
+    expect(() => decodeCheckoutToken("%%%")).toThrow(CheckoutLinkError);
   });
 
   test("round trip works for a demo-rail link and a B2B, specific-debtor offer", () => {

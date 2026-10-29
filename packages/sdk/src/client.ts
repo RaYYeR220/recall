@@ -20,7 +20,7 @@ import {
   toPermitData,
   type RailDomain,
 } from "./eip712";
-import { memoAbi } from "./erc20";
+import { erc20Abi, memoAbi } from "./erc20";
 import {
   MEMO_ADDRESS,
   TIME_SCALE,
@@ -45,7 +45,7 @@ export interface RailClientConfig {
   publicClient: PublicClient;
   /** Needed for anything that signs or sends. Reads work without it. */
   walletClient?: WalletClient;
-  /** Base URL of a relay that submits signatures for payers who have no gas. */
+  /** Endpoint of a relay that submits signatures for payers who have no gas, e.g. "/api/relay". Every relay call is a POST to this URL. */
   relayUrl?: string;
   /** Override the rail and lens addresses (local forks, tests). Defaults to deployments/<chainId>.json. */
   addresses?: { rail: Address; lens: Address };
@@ -97,6 +97,11 @@ export function encodeMemoCall(target: Address, data: Hex, memoId: Hex, remittan
 /** JSON.stringify that writes bigints as decimal strings. */
 export function serializeForRelay(value: unknown): string {
   return JSON.stringify(value, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
+}
+
+/** collectionId = keccak256(abi.encode(mandateId, e2eId)). */
+export function collectionIdOf(mandateId: Hex, e2eId: Hex): Hex {
+  return keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [mandateId, e2eId]));
 }
 
 const ONE_GWEI = 1_000_000_000n;
@@ -163,19 +168,28 @@ export function createRailClient(config: RailClientConfig) {
     return wallet.sendTransaction({ account, chain: wallet.chain ?? null, to: target, data: calldata, ...fees });
   }
 
-  async function postRelay(path: string, body: unknown): Promise<Hex> {
+  async function postRelay(kind: "activate" | "debtor-action" | "permit", body: Record<string, unknown>): Promise<Hex> {
     if (!relayUrl) throw new Error("No relayUrl configured on this client.");
-    const res = await doFetch(`${relayUrl.replace(/\/+$/, "")}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: serializeForRelay(body),
-    });
+    let res: Response;
+    try {
+      res = await doFetch(relayUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: serializeForRelay({ kind, network, instance, rail, ...body }),
+      });
+    } catch (e) {
+      throw new RelayError(0, `Could not reach the relay (${e instanceof Error ? e.message : "network error"}).`);
+    }
     const text = await res.text();
     let json: unknown;
     try {
       json = JSON.parse(text);
     } catch {
       json = undefined;
+    }
+    if (json === undefined) {
+      // A dev server answers unknown paths with its HTML shell: that is "no relay here", not a relay failure.
+      throw new RelayError(res.status, res.ok ? "The relay is not available at this address." : `Relay answered ${res.status}.`);
     }
     const obj = (typeof json === "object" && json !== null ? json : {}) as { txHash?: unknown; error?: unknown };
     if (!res.ok) {
@@ -207,9 +221,7 @@ export function createRailClient(config: RailClientConfig) {
       const offerHash = hashTypedData(offerTypedData(await domain(), offer));
       return keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "address" }], [offerHash, debtor]));
     },
-    collectionId(mandateId: Hex, e2eId: Hex): Hex {
-      return keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [mandateId, e2eId]));
-    },
+    collectionId: collectionIdOf,
 
     // ── signing (wallet account signs) ──────────────────────────────────────
     /** Creditor (owner or operator) signs a mandate offer. */
@@ -339,17 +351,36 @@ export function createRailClient(config: RailClientConfig) {
       ),
 
     // ── relay (POST to relayUrl) ─────────────────────────────────────────────
-    /** POST {relayUrl}/debtor-action. The relay submits and pays gas; resolves with the tx hash. */
+    /** POST {relayUrl} with kind "debtor-action". The relay submits and pays gas; resolves with the tx hash. */
     relayDebtorAction: (action: DebtorAction, debtor: Address, sig: Hex): Promise<Hex> =>
-      postRelay("/debtor-action", { network, instance, rail, action, debtor, sig }),
-    /** POST {relayUrl}/activate. The relay submits and pays gas; resolves with the tx hash. */
+      postRelay("debtor-action", { action, debtor, sig }),
+    /** POST {relayUrl} with kind "permit": the relay submits an EIP-2612 permit (for example to lower an allowance). */
+    relayPermit: (token: Address, owner: Address, permit: PermitData): Promise<Hex> =>
+      postRelay("permit", { token, owner, spender: rail, permit }),
+    /** POST {relayUrl} with kind "activate". The relay submits and pays gas; resolves with the tx hash. */
     relayActivate: (
       offer: MandateOffer,
       offerSig: Hex,
       acceptance: MandateAcceptance,
       debtorSig: Hex,
       permit?: PermitData,
-    ): Promise<Hex> => postRelay("/activate", { network, instance, rail, offer, offerSig, acceptance, debtorSig, permit }),
+    ): Promise<Hex> => postRelay("activate", { offer, offerSig, acceptance, debtorSig, permit }),
+
+    /** Sets the rail's allowance on `token` with a plain approve, paid for by this wallet. */
+    setAllowance: (token: Address, value: bigint): Promise<Hex> =>
+      send(token, encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [rail, value] })),
+    /** Submits an EIP-2612 permit yourself (anyone may). */
+    submitPermit: (token: Address, owner: Address, permit: PermitData): Promise<Hex> =>
+      send(
+        token,
+        encodeFunctionData({
+          abi: erc20Abi,
+          functionName: "permit",
+          args: [owner, rail, permit.value, permit.deadline, permit.v, permit.r, permit.s],
+        }),
+      ),
+    allowance: (token: Address, owner: Address): Promise<bigint> =>
+      publicClient.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [owner, rail] }),
 
     // ── reads ────────────────────────────────────────────────────────────────
     /** A payer's mandates with their newest collections. `limit` 0 = all remaining. */

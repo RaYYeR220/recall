@@ -36,3 +36,13 @@ screencast/
 
 # scratch scripts
 scripts/_*.ts
+
+# private ops helpers (keys, funding)
+ops-private/
+
+# Studio scaffold helpers we do not use
+scripts/compass-deploy.ts
+scripts/compass-deploy-helpers.ts
+scripts/self-deploy.ts
+scripts/fetch-abi.ts
+dist/

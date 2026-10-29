@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Recall design tokens ("Dark notice"). One lime accent, one danger colour, hairlines instead of shadows. */
+:root {
+  --ground: #0a0a0b;
+  --raise: #111113;
+  --card: #151517;
+  --ink: #f5f5f7;
+  --ink-2: #a1a1a6;
+  --ink-3: #6e6e73;
+  --ink-4: #3a3a3e;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.12);
+  --accent: 200 240 79;
+  --danger: 255 107 94;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html {
+    background: var(--ground);
+  }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 3px;
+    border-radius: 999px;
+  }
+  input:focus-visible,
+  textarea:focus-visible {
+    outline-offset: 1px;
+    border-radius: 14px;
+  }
+  ::selection {
+    background: rgb(var(--accent) / 0.28);
+  }
+}
+
+@layer utilities {
+  .mono {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}

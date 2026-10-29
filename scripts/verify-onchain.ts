@@ -6,7 +6,10 @@
  *   bun run scripts/verify-onchain.ts --rpc https://...   # override the RPC endpoint
  *
  * It checks:
- *   1. every transaction listed in proof/*.json: receipt found, status success, block, `to`;
+ *   1. every transaction listed in proof/*.json: receipt found, block, `to`, and status. A normal step must
+ *      have succeeded. A recorded refusal (kind "refusal" / status "reverted") must have reverted, and the
+ *      contract's own error is re-derived by replaying the call one block earlier and compared with the
+ *      error the proof says it expected;
  *   2. both rails and lenses: code present, timeScale, EIP-712 domain name, lens points at the rail;
  *   3. health() on both lenses (solvency invariants i1, i2, i3 for EURC and USDC).
  *
@@ -23,6 +26,7 @@ import {
   TIME_SCALE,
   createRailClient,
   debitRailAbi,
+  decodeRailError,
   networkInfo,
   railAddresses,
   railDomain,
@@ -79,6 +83,8 @@ interface ProofTx {
   hash: Hex;
   expectedBlock?: bigint;
   expectedTo?: string;
+  /** Set for recorded refusals: the transaction must have reverted. The string is the expected error name, if any. */
+  refusal?: { error?: string };
 }
 
 const HASH = /^0x[0-9a-fA-F]{64}$/;
@@ -100,7 +106,10 @@ function collectTxs(file: string, node: unknown, label: string, out: Map<string,
       if (!out.has(key)) {
         const block = o["blockNumber"] ?? o["block"];
         const to = o["to"];
+        const isRefusal = o["kind"] === "refusal" || o["status"] === "reverted";
+        const named = [o["expect"], o["reason"]].find((v): v is string => typeof v === "string");
         out.set(key, {
+          refusal: isRefusal ? { error: named } : undefined,
           file,
           label: own,
           hash: v as Hex,
@@ -111,7 +120,12 @@ function collectTxs(file: string, node: unknown, label: string, out: Map<string,
     }
   }
   for (const [k, v] of Object.entries(o)) {
-    if (typeof v === "object") collectTxs(file, v, `${own}.${k}`, out);
+    if (typeof v === "string" && HASH.test(v) && (label.endsWith(".txs") || label.endsWith(".transactions"))) {
+      // { "txs": { "activate": "0x..." } }: the key is the label.
+      if (!out.has(v.toLowerCase())) out.set(v.toLowerCase(), { file, label: k, hash: v as Hex });
+    } else if (typeof v === "object") {
+      collectTxs(file, v, `${own}.${k}`, out);
+    }
   }
 }
 
@@ -150,6 +164,31 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   throw last;
 }
 
+type Replay = { kind: "reason"; name: string; code: string | null } | { kind: "unknown"; detail: string };
+
+/**
+ * Replays a reverted transaction against the state one block earlier and reads the contract's own error.
+ * Same approach the app uses for its refusal toasts.
+ */
+async function replayRefusal(hash: Hex, blockNumber: bigint): Promise<Replay> {
+  try {
+    const tx = await withRetry(() => publicClient.getTransaction({ hash }));
+    if (!tx.to) return { kind: "unknown", detail: "contract creation" };
+    try {
+      await withRetry(() =>
+        publicClient.call({ account: tx.from, to: tx.to, data: tx.input, value: tx.value, blockNumber: blockNumber - 1n }),
+      );
+      return { kind: "unknown", detail: "the call does not revert on the previous block's state" };
+    } catch (e) {
+      const err = decodeRailError(e);
+      if (err.name === "UnknownError") return { kind: "unknown", detail: err.message };
+      return { kind: "reason", name: err.name, code: err.code };
+    }
+  } catch (e) {
+    return { kind: "unknown", detail: (e as Error).message.split("\n")[0] ?? "lookup failed" };
+  }
+}
+
 async function checkProofs(): Promise<void> {
   const dir = join(root, "proof");
   const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".json")).sort() : [];
@@ -184,7 +223,22 @@ async function checkProofs(): Promise<void> {
     try {
       const receipt = await withRetry(() => publicClient.getTransactionReceipt({ hash: t.hash }));
       const problems: string[] = [];
-      if (receipt.status !== "success") problems.push(`status ${receipt.status}`);
+      const notes: string[] = [];
+      let warn = false;
+      if (t.refusal) {
+        // A recorded refusal is a feature: it must have reverted, and for the reason the proof names.
+        if (receipt.status !== "reverted") problems.push(`expected a refusal but the transaction ${receipt.status === "success" ? "succeeded" : receipt.status}`);
+        else {
+          const why = await replayRefusal(t.hash, receipt.blockNumber);
+          if (why.kind === "reason") {
+            if (t.refusal.error && why.name !== t.refusal.error) problems.push(`refused with ${why.name}, proof says ${t.refusal.error}`);
+            else notes.push(`refused: ${why.name}${why.code ? ` (${why.code})` : ""}`);
+          } else {
+            warn = true;
+            notes.push(`reverted${t.refusal.error ? ` (proof says ${t.refusal.error})` : ""}; reason not re-derived: ${why.detail}`);
+          }
+        }
+      } else if (receipt.status !== "success") problems.push(`status ${receipt.status}`);
       if (receipt.blockNumber < BigInt(deployment.block)) problems.push(`block ${receipt.blockNumber} is before the deployment block ${deployment.block}`);
       if (t.expectedBlock !== undefined && receipt.blockNumber !== t.expectedBlock) problems.push(`block ${receipt.blockNumber}, proof says ${t.expectedBlock}`);
       const to = receipt.to?.toLowerCase();
@@ -192,8 +246,9 @@ async function checkProofs(): Promise<void> {
       if (!to) problems.push("contract creation, not a call");
       else if (!toName) problems.push(`to ${receipt.to} is not a Recall contract, token or the Memo predeploy`);
       if (t.expectedTo && to && t.expectedTo.toLowerCase() !== to) problems.push(`to ${receipt.to}, proof says ${t.expectedTo}`);
-      const detail = `${t.label} | block ${receipt.blockNumber} | to ${toName ?? receipt.to ?? "?"}`;
-      return { group, subject, status: problems.length ? "FAIL" : "PASS", detail: problems.length ? `${problems.join("; ")} | ${detail}` : detail };
+      const detail = [t.label, ...notes, `block ${receipt.blockNumber}`, `to ${toName ?? receipt.to ?? "?"}`].join(" | ");
+      const status: Status = problems.length ? "FAIL" : warn ? "WARN" : "PASS";
+      return { group, subject, status, detail: problems.length ? `${problems.join("; ")} | ${detail}` : detail };
     } catch (e) {
       return { group, subject, status: "FAIL", detail: `${t.label} | receipt not found (${(e as Error).message.split("\n")[0]})` };
     }

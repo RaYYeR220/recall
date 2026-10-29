@@ -24,19 +24,22 @@ import {
   formatUnits,
   encodeFunctionData,
   decodeErrorResult,
-  hashTypedData,
   domainSeparator,
   keccak256,
   stringToHex,
   type Address,
   type Hex,
+  type Chain,
   type WalletClient,
-  type PublicClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { debitRailAbi } from "../packages/sdk/src/abi";
 import { defineChain } from "viem";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
+import { fileURLToPath } from "url";
+
+const HERE = fileURLToPath(new URL(".", import.meta.url));
 
 // ── Chain definitions ────────────────────────────────────────────────────────
 
@@ -72,36 +75,8 @@ const ERC20_ABI = [
   { name: "version",     type: "function", stateMutability: "view",       inputs: [], outputs: [{ type: "string" }] },
 ] as const;
 
-const RAIL_ABI = [
-  // Creditors
-  { name: "registerCreditor",         type: "function", stateMutability: "nonpayable", inputs: [{ name: "name", type: "string" }, { name: "payout", type: "address" }], outputs: [{ name: "creditorId", type: "uint256" }] },
-  { name: "fundReserve",              type: "function", stateMutability: "nonpayable", inputs: [{ name: "creditorId", type: "uint256" }, { name: "token", type: "address" }, { name: "amount", type: "uint256" }], outputs: [] },
-  { name: "withdrawReserve",          type: "function", stateMutability: "nonpayable", inputs: [{ name: "creditorId", type: "uint256" }, { name: "token", type: "address" }, { name: "amount", type: "uint256" }, { name: "to", type: "address" }], outputs: [] },
-  // Mandate
-  { name: "hashOffer",                type: "function", stateMutability: "view",       inputs: [{ name: "offer", type: "tuple", components: [{ name: "creditorId", type: "uint256" }, { name: "token", type: "address" }, { name: "scheme", type: "uint8" }, { name: "oneOff", type: "bool" }, { name: "maxPerCollection", type: "uint128" }, { name: "maxPerPeriod", type: "uint128" }, { name: "periodLength", type: "uint32" }, { name: "prenoticeLength", type: "uint32" }, { name: "offerRef", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "maxUses", type: "uint32" }, { name: "validUntil", type: "uint64" }, { name: "timeScale", type: "uint32" }, { name: "debtor", type: "address" }] }], outputs: [{ type: "bytes32" }] },
-  { name: "hashAcceptance",           type: "function", stateMutability: "view",       inputs: [{ name: "acc", type: "tuple", components: [{ name: "offerHash", type: "bytes32" }, { name: "debtor", type: "address" }, { name: "deadline", type: "uint64" }] }], outputs: [{ type: "bytes32" }] },
-  { name: "hashDebtorAction",         type: "function", stateMutability: "view",       inputs: [{ name: "a", type: "tuple", components: [{ name: "kind", type: "uint8" }, { name: "target", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint64" }] }], outputs: [{ type: "bytes32" }] },
-  { name: "activateMandateWithPermit",type: "function", stateMutability: "nonpayable", inputs: [{ name: "offer", type: "tuple", components: [{ name: "creditorId", type: "uint256" }, { name: "token", type: "address" }, { name: "scheme", type: "uint8" }, { name: "oneOff", type: "bool" }, { name: "maxPerCollection", type: "uint128" }, { name: "maxPerPeriod", type: "uint128" }, { name: "periodLength", type: "uint32" }, { name: "prenoticeLength", type: "uint32" }, { name: "offerRef", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "maxUses", type: "uint32" }, { name: "validUntil", type: "uint64" }, { name: "timeScale", type: "uint32" }, { name: "debtor", type: "address" }] }, { name: "offerSig", type: "bytes" }, { name: "acc", type: "tuple", components: [{ name: "offerHash", type: "bytes32" }, { name: "debtor", type: "address" }, { name: "deadline", type: "uint64" }] }, { name: "debtorSig", type: "bytes" }, { name: "permit", type: "tuple", components: [{ name: "value", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" }] }], outputs: [{ name: "mandateId", type: "bytes32" }] },
-  { name: "activateMandate",          type: "function", stateMutability: "nonpayable", inputs: [{ name: "offer", type: "tuple", components: [{ name: "creditorId", type: "uint256" }, { name: "token", type: "address" }, { name: "scheme", type: "uint8" }, { name: "oneOff", type: "bool" }, { name: "maxPerCollection", type: "uint128" }, { name: "maxPerPeriod", type: "uint128" }, { name: "periodLength", type: "uint32" }, { name: "prenoticeLength", type: "uint32" }, { name: "offerRef", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "maxUses", type: "uint32" }, { name: "validUntil", type: "uint64" }, { name: "timeScale", type: "uint32" }, { name: "debtor", type: "address" }] }, { name: "offerSig", type: "bytes" }, { name: "acc", type: "tuple", components: [{ name: "offerHash", type: "bytes32" }, { name: "debtor", type: "address" }, { name: "deadline", type: "uint64" }] }, { name: "debtorSig", type: "bytes" }], outputs: [{ name: "mandateId", type: "bytes32" }] },
-  { name: "prenotify",                type: "function", stateMutability: "nonpayable", inputs: [{ name: "mandateId", type: "bytes32" }, { name: "amount", type: "uint128" }, { name: "dueAt", type: "uint64" }, { name: "e2eId", type: "bytes32" }, { name: "remittanceInfo", type: "string" }], outputs: [{ name: "collectionId", type: "bytes32" }] },
-  { name: "collect",                  type: "function", stateMutability: "nonpayable", inputs: [{ name: "collectionId", type: "bytes32" }], outputs: [{ name: "", type: "uint8" }] },
-  { name: "refund",                   type: "function", stateMutability: "nonpayable", inputs: [{ name: "collectionId", type: "bytes32" }], outputs: [] },
-  { name: "release",                  type: "function", stateMutability: "nonpayable", inputs: [{ name: "collectionId", type: "bytes32" }], outputs: [] },
-  { name: "refuse",                   type: "function", stateMutability: "nonpayable", inputs: [{ name: "collectionId", type: "bytes32" }], outputs: [] },
-  { name: "revoke",                   type: "function", stateMutability: "nonpayable", inputs: [{ name: "mandateId", type: "bytes32" }], outputs: [] },
-  { name: "expire",                   type: "function", stateMutability: "nonpayable", inputs: [{ name: "collectionId", type: "bytes32" }], outputs: [] },
-  { name: "executeDebtorAction",      type: "function", stateMutability: "nonpayable", inputs: [{ name: "a", type: "tuple", components: [{ name: "kind", type: "uint8" }, { name: "target", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint64" }] }, { name: "debtorAddr", type: "address" }, { name: "sig", type: "bytes" }], outputs: [] },
-  // Views
-  { name: "getMandate",               type: "function", stateMutability: "view", inputs: [{ name: "mandateId", type: "bytes32" }], outputs: [{ name: "", type: "tuple", components: [{ name: "offerHash", type: "bytes32" }, { name: "creditorId", type: "uint256" }, { name: "debtor", type: "address" }, { name: "token", type: "address" }, { name: "scheme", type: "uint8" }, { name: "oneOff", type: "bool" }, { name: "maxPerCollection", type: "uint128" }, { name: "maxPerPeriod", type: "uint128" }, { name: "periodLength", type: "uint32" }, { name: "prenoticeLength", type: "uint32" }, { name: "offerRef", type: "bytes32" }, { name: "activatedAt", type: "uint64" }, { name: "lastActivityAt", type: "uint64" }, { name: "status", type: "uint8" }] }] },
-  { name: "getCollection",            type: "function", stateMutability: "view", inputs: [{ name: "collectionId", type: "bytes32" }], outputs: [{ name: "", type: "tuple", components: [{ name: "mandateId", type: "bytes32" }, { name: "e2eId", type: "bytes32" }, { name: "amount", type: "uint128" }, { name: "dueAt", type: "uint64" }, { name: "settledAt", type: "uint64" }, { name: "locked", type: "uint128" }, { name: "held", type: "uint128" }, { name: "status", type: "uint8" }, { name: "code", type: "bytes4" }] }] },
-  { name: "coverage",                 type: "function", stateMutability: "view", inputs: [{ name: "creditorId", type: "uint256" }, { name: "token", type: "address" }], outputs: [{ name: "", type: "tuple", components: [{ name: "reserveTotal", type: "uint256" }, { name: "reserveLocked", type: "uint256" }, { name: "held", type: "uint256" }, { name: "openExposure", type: "uint256" }] }] },
-  { name: "nonces",                   type: "function", stateMutability: "view", inputs: [{ name: "debtor", type: "address" }], outputs: [{ type: "uint256" }] },
-  { name: "minPrenotice",             type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-  { name: "timeScale",                type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint32" }] },
-  { name: "refundWindow",             type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-  { name: "executionWindow",          type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-  { name: "stats",                    type: "function", stateMutability: "view", inputs: [{ name: "token", type: "address" }], outputs: [{ name: "collected", type: "uint256" }, { name: "refunded", type: "uint256" }, { name: "settledCount", type: "uint256" }, { name: "refundedCount", type: "uint256" }, { name: "returnedCount", type: "uint256" }] },
-] as const;
+// The full, typed ABI generated from the compiled contract (packages/sdk/src/abi.ts).
+const RAIL_ABI = debitRailAbi;
 
 const LENS_ABI = [
   { name: "health", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "eurcHealth", type: "tuple", components: [{ name: "token", type: "address" }, { name: "balance", type: "uint256" }, { name: "reserves", type: "uint256" }, { name: "held", type: "uint256" }, { name: "claimables", type: "uint256" }, { name: "surplus", type: "uint256" }, { name: "lockedTotal", type: "uint256" }, { name: "exposureTotal", type: "uint256" }, { name: "i1", type: "bool" }, { name: "i2", type: "bool" }, { name: "i3", type: "bool" }] }, { name: "usdcHealth", type: "tuple", components: [{ name: "token", type: "address" }, { name: "balance", type: "uint256" }, { name: "reserves", type: "uint256" }, { name: "held", type: "uint256" }, { name: "claimables", type: "uint256" }, { name: "surplus", type: "uint256" }, { name: "lockedTotal", type: "uint256" }, { name: "exposureTotal", type: "uint256" }, { name: "i1", type: "bool" }, { name: "i2", type: "bool" }, { name: "i3", type: "bool" }] }] },
@@ -139,7 +114,7 @@ const MANDATE_TEXT =
   "every amount and date in advance. You are entitled to a refund of any collection within eight weeks of it, with no questions asked.";
 const instance = getArg("--instance", "demo");
 
-const NETWORKS: Record<string, { chain: typeof arcTestnet; chainId: number; explorer: string }> = {
+const NETWORKS: Record<string, { chain: Chain; chainId: number; explorer: string }> = {
   "arc-testnet": { chain: arcTestnet, chainId: 5042002, explorer: "https://explorer.testnet.arc.io" },
   "arc":         { chain: arcMainnet, chainId: 5042,    explorer: "https://explorer.arc.io" },
 };
@@ -166,7 +141,7 @@ if (!EURC_ADDR || !USDC_ADDR) throw new Error("Missing EURC_ADDRESS or VITE_USDC
 
 // ── Deployment manifest ──────────────────────────────────────────────────────
 
-const deployFile = join(import.meta.dir, "..", "deployments", `${net.chainId}.json`);
+const deployFile = join(HERE, "..", "deployments", `${net.chainId}.json`);
 const deployment = JSON.parse(readFileSync(deployFile, "utf8")) as {
   prod: { rail: Address; lens: Address };
   demo: { rail: Address; lens: Address };
@@ -179,8 +154,6 @@ const lensAddr = deployment[instance as "prod" | "demo"].lens;
 // --rpc overrides the chain's default endpoint (for example a local fork for a rehearsal run).
 const rpcUrl = getArg("--rpc", net.chain.rpcUrls.default.http[0]);
 const pub = createPublicClient({ chain: net.chain, transport: http(rpcUrl) });
-// Offers must carry the instance's own time scale (the demo rail rejects anything else).
-const railTimeScale = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "timeScale" });
 const relayer  = createWalletClient({ chain: net.chain, transport: http(rpcUrl), account: relayerAccount });
 const creditor = createWalletClient({ chain: net.chain, transport: http(rpcUrl), account: creditorAccount });
 const debtor_w = createWalletClient({ chain: net.chain, transport: http(rpcUrl), account: debtorAccount });
@@ -245,7 +218,10 @@ async function send(
   to: Address,
   data: Hex
 ): Promise<Hex> {
+  if (!client.account) throw new Error("wallet client has no account");
   const hash = await client.sendTransaction({
+    account: client.account,
+    chain: client.chain ?? null,
     to,
     data,
     // Arc testnet requires explicit gas price >= 20 gwei
@@ -254,15 +230,6 @@ async function send(
   });
   await waitAndMine(hash);
   return hash;
-}
-
-async function railRead<T>(fn: string, args: unknown[]): Promise<T> {
-  return pub.readContract({
-    address: railAddr,
-    abi: RAIL_ABI,
-    functionName: fn as "minPrenotice",
-    args: args as [],
-  }) as Promise<T>;
 }
 
 async function now(): Promise<bigint> {
@@ -329,7 +296,7 @@ async function getDomain(): Promise<{ name: string; version: string; chainId: nu
     const result = await pub.readContract({ address: railAddr, abi: [{ name: "eip712Domain", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "fields", type: "bytes1" }, { name: "name", type: "string" }, { name: "version", type: "string" }, { name: "chainId", type: "uint256" }, { name: "verifyingContract", type: "address" }, { name: "salt", type: "bytes32" }, { name: "extensions", type: "uint256[]" }] }] as const, functionName: "eip712Domain" });
     _domainName = result[1] ?? "Recall DebitRail";
   }
-  return { name: _domainName!, version: "1", chainId: net.chainId, verifyingContract: railAddr };
+  return { name: _domainName, version: "1", chainId: net.chainId, verifyingContract: railAddr };
 }
 
 async function signOffer(offer: Record<string, unknown>): Promise<Hex> {
@@ -401,13 +368,12 @@ console.log(`Relayer:  ${relayerAccount.address}`);
 
 // ── Step a: Register creditor, fund reserve ──────────────────────────────────
 
-let creditorId: bigint;
+let creditorId = 0n;
 
 await step("a1: registerCreditor Northwind Gym", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "registerCreditor", args: ["Northwind Gym", creditorAccount.address] });
   const hash = await send(creditor, railAddr, data);
   // Read creditorId from event (simplification: use creditorCount which just incremented)
-  const count = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "stats", args: [EURC_ADDR] });
   // creditorId is always the incremented count; we can read it from the tx receipt logs
   const receipt = await pub.getTransactionReceipt({ hash });
   // CreditorRegistered(uint256 indexed creditorId,...) — topic[1] is the id
@@ -459,20 +425,21 @@ const offer = {
   termsHash:        keccak256(stringToHex(MANDATE_TEXT)),
   maxUses:          0,
   validUntil,
-  timeScale:         railTimeScale,
+  timeScale:         1,          // wall-clock seconds (prod)
   debtor:           "0x0000000000000000000000000000000000000000" as `0x${string}`, // open offer
 };
 
-let mandateId: Hex;
+let mandateId: Hex = "0x";
 
 await step("b1: creditor signs offer", async () => {
+  await Promise.resolve();
   return { detail: { offer: { ...offer, creditorId: offer.creditorId.toString(), maxPerCollection: offer.maxPerCollection.toString(), maxPerPeriod: offer.maxPerPeriod.toString(), validUntil: offer.validUntil.toString() } } };
 });
 
 const offerSig = await signOffer(offer);
 
 // Get the offer hash from the contract view
-const offerHash = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "hashOffer", args: [offer as Parameters<typeof pub.readContract>[0]["args"][0]] });
+const offerHash = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "hashOffer", args: [offer] });
 
 const acc = { offerHash, debtor: debtorAccount.address, deadline: accDeadline };
 const debtorSig = await signAcceptance(acc);
@@ -486,7 +453,7 @@ await step("b2: relayer submits activateMandateWithPermit", async () => {
   const data = encodeFunctionData({
     abi: RAIL_ABI,
     functionName: "activateMandateWithPermit",
-    args: [offer as Parameters<typeof encodeFunctionData>[0]["args"][0], offerSig, acc as Parameters<typeof encodeFunctionData>[0]["args"][2], debtorSig, permitData as Parameters<typeof encodeFunctionData>[0]["args"][4]],
+    args: [offer, offerSig, acc, debtorSig, permitData],
   });
   const hash = await send(relayer, railAddr, data);
   const receipt = await pub.getTransactionReceipt({ hash });
@@ -499,11 +466,9 @@ await step("b2: relayer submits activateMandateWithPermit", async () => {
 // ── Step c: prenotify 0.05 EURC, wait, collect → SETTLED ────────────────────
 
 const minPre = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "minPrenotice" });
-// Public RPCs are load-balanced and a node can lag a few seconds behind; leave room so a due date never lands inside the pre-notice.
-const DUE_MARGIN = network === "arc" ? 30n : 5n;
-const dueAt1 = await now() + minPre + DUE_MARGIN;
+const dueAt1 = await now() + minPre + 5n;
 
-let coll1Id: Hex;
+let coll1Id: Hex = "0x";
 
 await step("c1: prenotify 0.05 EURC", async () => {
   const e2eId = ref("e2e001");
@@ -522,7 +487,7 @@ await step("c2: debtor approves 0.05 EURC", async () => {
   return { hash };
 });
 
-await waitSeconds(Number(minPre + DUE_MARGIN) + 6);
+await waitSeconds(Number(minPre) + 6);
 
 await step("c3: collect → SETTLED (fully covered)", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "collect", args: [coll1Id] });
@@ -539,7 +504,7 @@ const refundAction = { kind: 0, target: coll1Id, nonce: debtorNonce1, deadline: 
 const refundSig = await signDebtorAction(refundAction);
 
 await step("d: relayer submits executeDebtorAction REFUND → REFUNDED", async () => {
-  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "executeDebtorAction", args: [refundAction as Parameters<typeof encodeFunctionData>[0]["args"][0], debtorAccount.address, refundSig] });
+  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "executeDebtorAction", args: [refundAction, debtorAccount.address, refundSig] });
   const hash = await send(relayer, railAddr, data);
   const col = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "getCollection", args: [coll1Id] });
   const bal = await pub.readContract({ address: EURC_ADDR, abi: ERC20_ABI, functionName: "balanceOf", args: [debtorAccount.address] });
@@ -550,7 +515,7 @@ await step("d: relayer submits executeDebtorAction REFUND → REFUNDED", async (
 
 // Reserve is 0.10 EURC; after refund it's back since refund unwinds locked from reserve.
 // So free is still 0.10. Scheduling 0.15 → locked=0.10, held=0.05.
-const dueAt2 = await now() + minPre + DUE_MARGIN;
+const dueAt2 = await now() + minPre + 5n;
 let coll2Id: Hex;
 
 await step("e1: prenotify 0.15 EURC (locked+held split)", async () => {
@@ -570,7 +535,7 @@ await step("e2: debtor approves 0.15 EURC", async () => {
   return { hash };
 });
 
-await waitSeconds(Number(minPre + DUE_MARGIN) + 6);
+await waitSeconds(Number(minPre) + 6);
 
 await step("e3: collect → SETTLED (locked + held split)", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "collect", args: [coll2Id] });
@@ -607,12 +572,12 @@ const offerB2B = {
   termsHash:        keccak256(stringToHex(MANDATE_TEXT)),
   maxUses:          1,
   validUntil:       t1 + 7200n,
-  timeScale:         railTimeScale,
+  timeScale:         1,
   debtor:           debtorAccount.address, // B2B bound to specific debtor
 };
 
 const offerB2BSig   = await signOffer(offerB2B);
-const offerB2BHash  = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "hashOffer", args: [offerB2B as Parameters<typeof pub.readContract>[0]["args"][0]] });
+const offerB2BHash  = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "hashOffer", args: [offerB2B] });
 const accB2B        = { offerHash: offerB2BHash, debtor: debtorAccount.address, deadline: t1 + 3600n };
 const debtorSigB2B  = await signAcceptance(accB2B);
 
@@ -620,7 +585,7 @@ let mandateB2BId: Hex;
 let collB2BId: Hex;
 
 await step("f1: activate B2B one-off USDC mandate", async () => {
-  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "activateMandate", args: [offerB2B as Parameters<typeof encodeFunctionData>[0]["args"][0], offerB2BSig, accB2B as Parameters<typeof encodeFunctionData>[0]["args"][2], debtorSigB2B] });
+  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "activateMandate", args: [offerB2B, offerB2BSig, accB2B, debtorSigB2B] });
   const hash = await send(relayer, railAddr, data);
   const receipt = await pub.getTransactionReceipt({ hash });
   const log = receipt.logs.find(l => l.address.toLowerCase() === railAddr.toLowerCase() && l.topics.length >= 2);
@@ -628,7 +593,7 @@ await step("f1: activate B2B one-off USDC mandate", async () => {
   return { hash, detail: { mandateId: mandateB2BId } };
 });
 
-const dueAtB2B = await now() + minPre + DUE_MARGIN;
+const dueAtB2B = await now() + minPre + 5n;
 
 await step("f2: prenotify 0.05 USDC", async () => {
   const e2eId = ref("e2e003");
@@ -646,7 +611,7 @@ await step("f3: debtor approves 0.05 USDC", async () => {
   return { hash };
 });
 
-await waitSeconds(Number(minPre + DUE_MARGIN) + 6);
+await waitSeconds(Number(minPre) + 6);
 
 await step("f4: collect B2B → FINAL immediately", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "collect", args: [collB2BId] });
@@ -673,12 +638,12 @@ const offerAM04 = {
   termsHash:        keccak256(stringToHex(MANDATE_TEXT)),
   maxUses:          0,
   validUntil:       t2 + 7200n,
-  timeScale:         railTimeScale,
+  timeScale:         1,
   debtor:           "0x0000000000000000000000000000000000000000" as `0x${string}`,
 };
 
 const offerAM04Sig  = await signOffer(offerAM04);
-const offerAM04Hash = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "hashOffer", args: [offerAM04 as Parameters<typeof pub.readContract>[0]["args"][0]] });
+const offerAM04Hash = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "hashOffer", args: [offerAM04] });
 
 // debtor2 signs acceptance
 const accAM04 = { offerHash: offerAM04Hash, debtor: debtor2Account.address, deadline: t2 + 3600n };
@@ -693,7 +658,7 @@ let mandateAM04Id: Hex;
 let collAM04Id: Hex;
 
 await step("g1: activate mandate for debtor2 (no balance)", async () => {
-  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "activateMandate", args: [offerAM04 as Parameters<typeof encodeFunctionData>[0]["args"][0], offerAM04Sig, accAM04 as Parameters<typeof encodeFunctionData>[0]["args"][2], debtor2AccSig] });
+  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "activateMandate", args: [offerAM04, offerAM04Sig, accAM04, debtor2AccSig] });
   const hash = await send(relayer, railAddr, data);
   const receipt = await pub.getTransactionReceipt({ hash });
   const log = receipt.logs.find(l => l.address.toLowerCase() === railAddr.toLowerCase() && l.topics.length >= 2);
@@ -701,7 +666,7 @@ await step("g1: activate mandate for debtor2 (no balance)", async () => {
   return { hash, detail: { mandateId: mandateAM04Id, debtor: debtor2Account.address } };
 });
 
-const dueAtAM04 = await now() + minPre + DUE_MARGIN;
+const dueAtAM04 = await now() + minPre + 5n;
 
 await step("g2: prenotify 0.05 EURC for debtor2", async () => {
   const e2eId = ref("e2e004");
@@ -713,7 +678,7 @@ await step("g2: prenotify 0.05 EURC for debtor2", async () => {
   return { hash, detail: { collectionId: collAM04Id } };
 });
 
-await waitSeconds(Number(minPre + DUE_MARGIN) + 6);
+await waitSeconds(Number(minPre) + 6);
 
 await step("g3: collect → RETURNED AM04 (no balance)", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "collect", args: [collAM04Id] });
@@ -725,8 +690,8 @@ await step("g3: collect → RETURNED AM04 (no balance)", async () => {
 // ── Step h: refuse + revoke + prenotify reverts MD01 ─────────────────────────
 
 // Use a fresh mandate for h — the original mandateId
-const dueAtH = await now() + minPre + DUE_MARGIN;
-let collHId: Hex;
+const dueAtH = await now() + minPre + 5n;
+let collHId: Hex = "0x";
 
 await step("h1: prenotify for CORE mandate", async () => {
   const e2eId = ref("e2e005");
@@ -746,7 +711,7 @@ const refuseAction = { kind: 2, target: collHId, nonce: debtorNonce2, deadline: 
 const refuseSig = await signDebtorAction(refuseAction);
 
 await step("h2: debtor refuses collection via executeDebtorAction", async () => {
-  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "executeDebtorAction", args: [refuseAction as Parameters<typeof encodeFunctionData>[0]["args"][0], debtorAccount.address, refuseSig] });
+  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "executeDebtorAction", args: [refuseAction, debtorAccount.address, refuseSig] });
   const hash = await send(relayer, railAddr, data);
   const col = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "getCollection", args: [collHId] });
   return { hash, detail: { status: col.status, code: col.code } };
@@ -758,7 +723,7 @@ const revokeAction = { kind: 1, target: mandateId, nonce: debtorNonce3, deadline
 const revokeSig = await signDebtorAction(revokeAction);
 
 await step("h3: debtor revokes mandate via executeDebtorAction", async () => {
-  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "executeDebtorAction", args: [revokeAction as Parameters<typeof encodeFunctionData>[0]["args"][0], debtorAccount.address, revokeSig] });
+  const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "executeDebtorAction", args: [revokeAction, debtorAccount.address, revokeSig] });
   const hash = await send(relayer, railAddr, data);
   const m = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "getMandate", args: [mandateId] });
   return { hash, detail: { mandateStatus: m.status } };
@@ -778,7 +743,7 @@ await simulate("collect too early (TooEarly)", async () => {
   const simData = encodeFunctionData({ abi: RAIL_ABI, functionName: "prenotify", args: [mandateAM04Id, USDC("0.05"), farDue, e2eId, "sim"] });
   await pub.call({ to: railAddr, data: simData, account: creditorAccount.address });
   // The prenotify works; now collect before dueAt
-  const receipt2 = await pub.call({ to: railAddr, data: simData, account: creditorAccount.address });
+  await pub.call({ to: railAddr, data: simData, account: creditorAccount.address });
   // now simulate collect on the (non-existent) cid
   throw new Error("simulation placeholder - no early collect possible without mining");
 });
@@ -786,17 +751,17 @@ await simulate("collect too early (TooEarly)", async () => {
 await simulate("prenotify over period cap (OverPeriodCap)", async () => {
   // mandateId is now REVOKED so prenotify will give MD01 — use mandateAM04Id
   const e2eId = ref("sim002");
-  const dueAtSim = await now() + minPre + DUE_MARGIN;
+  const dueAtSim = await now() + minPre + 5n;
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "prenotify", args: [mandateAM04Id, USDC("0.15"), dueAtSim, e2eId, "over cap"] });
   const result = await pub.call({ to: railAddr, data, account: creditorAccount.address });
-  if (result.data && result.data !== "0x") throw { data: result.data };
+  if (result.data && result.data !== "0x") throw Object.assign(new Error("call returned revert data"), { data: result.data });
 });
 
 await simulate("refund after window (RefundWindowClosed)", async () => {
   // coll2Id is FINAL; try refund
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "refund", args: [coll2Id] });
   const result = await pub.call({ to: railAddr, data, account: debtorAccount.address });
-  if (result.data && result.data !== "0x") throw { data: result.data };
+  if (result.data && result.data !== "0x") throw Object.assign(new Error("call returned revert data"), { data: result.data });
 });
 
 await simulate("withdraw locked reserve (ReserveLocked)", async () => {
@@ -804,13 +769,13 @@ await simulate("withdraw locked reserve (ReserveLocked)", async () => {
   const cov = await pub.readContract({ address: railAddr, abi: RAIL_ABI, functionName: "coverage", args: [creditorId, EURC_ADDR] });
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "withdrawReserve", args: [creditorId, EURC_ADDR, cov.reserveTotal, creditorAccount.address] });
   const result = await pub.call({ to: railAddr, data, account: creditorAccount.address });
-  if (result.data && result.data !== "0x") throw { data: result.data };
+  if (result.data && result.data !== "0x") throw Object.assign(new Error("call returned revert data"), { data: result.data });
 });
 
 await simulate("refund B2B collection (NoRefundRightB2B)", async () => {
   const data = encodeFunctionData({ abi: RAIL_ABI, functionName: "refund", args: [collB2BId] });
   const result = await pub.call({ to: railAddr, data, account: debtorAccount.address });
-  if (result.data && result.data !== "0x") throw { data: result.data };
+  if (result.data && result.data !== "0x") throw Object.assign(new Error("call returned revert data"), { data: result.data });
 });
 
 // ── Final health summary ──────────────────────────────────────────────────────
@@ -845,8 +810,8 @@ console.log(JSON.stringify(healthSummary, null, 2));
 proof.push({ step: "health()", detail: healthSummary });
 
 // Write proof
-mkdirSync(join(import.meta.dir, "..", "proof"), { recursive: true });
-const proofPath = join(import.meta.dir, "..", "proof", `${network}-${instance}-lifecycle.json`);
+mkdirSync(join(HERE, "..", "proof"), { recursive: true });
+const proofPath = join(HERE, "..", "proof", `${network}-${instance}-lifecycle.json`);
 writeFileSync(proofPath, JSON.stringify({ network, instance, rail: railAddr, lens: lensAddr, steps: proof }, null, 2));
 console.log(`\nProof written to proof/${network}-${instance}-lifecycle.json`);
 console.log("\nDone.");

@@ -22,7 +22,7 @@ const health = await rail.health();
 | `networks.ts` | chains, token addresses, `railAddresses(network)` from `deployments/*.json`, `TIME_SCALE` |
 | `eip712.ts` | `railDomain`, `offerTypedData`, `acceptanceTypedData`, `debtorActionTypedData`, `permitTypedData` |
 | `terms.ts` | `mandateText`, `termsHash`, `refToBytes32` |
-| `links.ts` | `encodeCheckoutLink`, `decodeCheckoutLink`, `verifyOfferSignature` |
+| `links.ts` | `encodeCheckoutLink`, `decodeCheckoutLink`, `encodeCheckoutToken`, `decodeCheckoutToken`, `verifyOfferSignature` |
 | `client.ts` | `createRailClient` (activate, prenotify, collect, refund, refuse, revoke, release, signing, relay, reads) |
 | `errors.ts` | `decodeRailError`, `returnCodeLabel` |
 | `camt054.ts` | `toCamt054` (ISO 20022 camt.054.001.08) and `toCsv` |
@@ -41,10 +41,23 @@ const health = await rail.health();
 
 ## Relay protocol
 
-When `relayUrl` is set, `relayActivate` POSTs to `{relayUrl}/activate` and `relayDebtorAction` to `{relayUrl}/debtor-action`. Bodies are JSON with bigints as decimal strings. The relay answers `{ "txHash": "0x..." }`, or a non-2xx status with `{ "error": "..." }`.
+`relayUrl` is a single endpoint (the app uses `/api/relay`). `relayActivate`, `relayDebtorAction` and `relayPermit` all POST JSON to it, with `kind` set to `"activate"`, `"debtor-action"` or `"permit"` plus `network`, `instance` and `rail`. Bigints are decimal strings. The relay answers `{ "txHash": "0x..." }`, or a non-2xx status with `{ "error": "..." }`. An unreachable relay, or one that answers with something other than JSON (for example a dev server's HTML page), throws `RelayError` so the caller can offer to submit the transaction itself.
 
 ## Tests
 
 ```bash
 bun test      # from packages/sdk; starts a local anvil with both rails deployed
 ```
+
+## What the contracts guarantee
+
+The SDK talks to an immutable, ownerless contract (no admin, no upgrade, no pause, no fees). It keeps these invariants on every path, and `health()` reports the first three live:
+
+- **I1** balance >= reserves + held + claimable, per token
+- **I2** open refund exposure == locked reserve + held funds
+- **I3** locked reserve <= total reserve
+- **I4** every collection inside its refund window can be refunded in full, at any moment
+- **I5** no collection exceeds its per-collection cap, no period its per-period cap
+- **I6** a refund returns exactly what was collected
+
+Two instances share one bytecode: `prod` (`timeScale` 1) and `demo` (`timeScale` 10080, one week lasts one minute). Reason codes used: `AM04` insufficient funds, `MS02` refused, `MS03` other, `MD01` no valid mandate, `MD06` refund, `AM05` duplicate (`returnCodeLabel` explains each).
