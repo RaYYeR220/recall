@@ -301,11 +301,13 @@ describe("relay", () => {
     expect(calls[0]?.url).toBe("https://relay.example/api/relay");
     expect(calls[0]?.init.method).toBe("POST");
     const body = JSON.parse(calls[0]?.init.body as string) as Record<string, unknown>;
-    expect(body["kind"]).toBe("debtor-action");
-    expect(body["action"]).toEqual({ kind: 0, target: action.target, nonce: "3", deadline: "1900000000" });
-    expect(body["debtor"]).toBe(debtorAddr);
+    expect(body["kind"]).toBe("action");
+    expect(body["network"]).toBe("arc");
     expect(body["instance"]).toBe("demo");
-    expect(body["sig"]).toBe("0x1234");
+    const payload = body["payload"] as Record<string, unknown>;
+    expect(payload["action"]).toEqual({ kind: 0, target: action.target, nonce: "3", deadline: "1900000000" });
+    expect(payload["debtor"]).toBe(debtorAddr);
+    expect(payload["sig"]).toBe("0x1234");
   });
 
   test("relayActivate POSTs the offer, acceptance and permit", async () => {
@@ -315,11 +317,14 @@ describe("relay", () => {
     const permit = { value: 7n, deadline: 9n, v: 27, r: bytes32("01"), s: bytes32("02") };
     await client.relayActivate(offer, "0xaa", acceptance, "0xbb", permit);
     expect(calls[0]?.url).toBe("https://relay.example/api/relay");
-    const body = JSON.parse(calls[0]?.init.body as string) as { kind: string; offer: Record<string, unknown>; permit: Record<string, unknown> };
+    const body = JSON.parse(calls[0]?.init.body as string) as {
+      kind: string;
+      payload: { offer: Record<string, unknown>; permit: Record<string, unknown> };
+    };
     expect(body.kind).toBe("activate");
-    expect(body.offer["maxPerCollection"]).toBe("100000000");
-    expect(body.offer["debtor"]).toBe(ZERO_ADDRESS);
-    expect(body.permit["value"]).toBe("7");
+    expect(body.payload.offer["maxPerCollection"]).toBe("100000000");
+    expect(body.payload.offer["debtor"]).toBe(ZERO_ADDRESS);
+    expect(body.payload.permit["value"]).toBe("7");
   });
 
   test("relay errors surface with status and message", async () => {
@@ -341,8 +346,9 @@ describe("relay", () => {
     await client.relayPermit("0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1", debtorAddr, permit);
     const body = JSON.parse(calls[0]?.init.body as string) as Record<string, unknown>;
     expect(body["kind"]).toBe("permit");
-    expect(body["spender"]).toBe(client.rail);
-    expect((body["permit"] as Record<string, unknown>)["value"]).toBe("0");
+    const payload = body["payload"] as Record<string, unknown>;
+    expect(payload["spender"]).toBe(client.rail);
+    expect((payload["permit"] as Record<string, unknown>)["value"]).toBe("0");
   });
 
   test("an HTML answer (a dev server with no relay) is reported as unavailable", async () => {

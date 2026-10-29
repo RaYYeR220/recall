@@ -8,3 +8,6 @@ export * from "./links";
 export * from "./client";
 export * from "./errors";
 export * from "./camt054";
+export * from "./batch";
+export * from "./logs";
+export * from "./offers";

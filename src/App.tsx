@@ -1,10 +1,13 @@
 import { Link, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout'
 import { ScrollManager } from './components/ScrollManager'
-import { ComingSoon } from './pages/ComingSoon'
 import { Landing } from './pages/Landing'
 import { MandateScreen } from './screens/MandateScreen'
+import { MerchantScreen } from './screens/MerchantScreen'
+import { DemoScreen } from './screens/DemoScreen'
+import { DevelopersScreen } from './screens/DevelopersScreen'
 import { PayScreen } from './screens/PayScreen'
+import { ProofScreen } from './screens/ProofScreen'
 
 function NotFound() {
   return (
@@ -33,22 +36,10 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="/pay" element={<PayScreen />} />
           <Route path="/m/:link" element={<MandateScreen />} />
-          <Route
-            path="/merchant"
-            element={<ComingSoon title="Merchant console" blurb="Register, fund your reserve, sign mandate offers and watch your coverage. Arriving next." />}
-          />
-          <Route
-            path="/proof"
-            element={<ComingSoon title="Live proof" blurb="Every claim, every transaction and the live invariants, straight from the chain. Arriving next." />}
-          />
-          <Route
-            path="/demo"
-            element={<ComingSoon title="Run a live debit" blurb="One click runs a real debit, refund window and all, on the demo rail where a week lasts a minute. Arriving next." />}
-          />
-          <Route
-            path="/developers"
-            element={<ComingSoon title="Developers" blurb="The SDK, the relay protocol and the contract reference. Arriving next." />}
-          />
+          <Route path="/merchant" element={<MerchantScreen />} />
+          <Route path="/proof" element={<ProofScreen />} />
+          <Route path="/demo" element={<DemoScreen />} />
+          <Route path="/developers" element={<DevelopersScreen />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

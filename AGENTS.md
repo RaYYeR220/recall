@@ -71,7 +71,7 @@ Requires: `CREDITOR_KEY`, `DEBTOR_KEY`, `RELAYER_KEY`, `DEBTOR2_KEY`, `EURC_ADDR
 - `@recall/sdk`, viem only. Source in `packages/sdk/src`, tests in `packages/sdk/test` (`bun run sdk:test`, boots a local anvil with both rails).
 - `src/abi.ts` is generated: `forge build && bun run sdk:abi`. Do not edit by hand.
 - `bun run verify:onchain` is a read-only mainnet check (receipts listed in `proof/*.json`, `health()` on both lenses).
-- Relay protocol: one endpoint, `POST /api/relay` (the app's `RELAY_URL`), JSON with `kind` = `activate` | `debtor-action` | `permit`; answer `{ txHash }` or `{ error }`. The server function comes later; until then the app shows the relay-unavailable state and offers "Submit it myself".
+- Relay protocol: one endpoint, `POST /api/relay` (the app's `RELAY_URL`), JSON `{ network, instance, kind: activate | action | permit, payload }`; answer `{ txHash }` or `{ error, refusal? }`. Implemented in `api/relay.ts` (inert until RELAYER_KEY is set); when it is unavailable the app offers "Submit it myself".
 
 
 ## Web app (src/)
@@ -84,3 +84,11 @@ Requires: `CREDITOR_KEY`, `DEBTOR_KEY`, `RELAYER_KEY`, `DEBTOR2_KEY`, `EURC_ADDR
 - Arc testnet: the addresses in `deployments/5042002.json` currently have no contract code. The app shows a "not live" panel there.
 
 - Checkout links: the creditor name in a link is NOT trusted. The /m/:link page runs `verifyCheckoutLink` (signature, on-chain name, text rebuilt by `mandateTextForOffer` equals `terms`, time scale) and blocks signing on any mismatch. Merchant-side text must come from `mandateTextForOffer`.
+
+## Part 2 (merchant console, proof, demo, developers, functions)
+
+- Routes: `/merchant` (src/screens/MerchantScreen.tsx + merchant/*), `/proof`, `/demo`, `/developers`. Everything reads the chain; no mock data.
+- Functions in `api/` (see `api/README.md` for routes and env). Shared logic in `api/_lib`; tests in `api/test` (`bun run api:test`). `vercel.json` rewrites the SPA and sets the function duration.
+- The demo's "Try to break it" is simulation only. A case is `live` (simulated now), `replayed` (the exact recorded mainnet calldata run against current state) or `recorded`; the response says which and whether the expected error was reproduced.
+- Creditor discovery and statements scan logs with `scanWindows` (9,000-block windows from the deployment block, never block 0).
+- Merchant text must come from `mandateTextForOffer`; the offer form already does.

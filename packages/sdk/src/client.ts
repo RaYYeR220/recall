@@ -168,14 +168,14 @@ export function createRailClient(config: RailClientConfig) {
     return wallet.sendTransaction({ account, chain: wallet.chain ?? null, to: target, data: calldata, ...fees });
   }
 
-  async function postRelay(kind: "activate" | "debtor-action" | "permit", body: Record<string, unknown>): Promise<Hex> {
+  async function postRelay(kind: "activate" | "action" | "permit", payload: Record<string, unknown>): Promise<Hex> {
     if (!relayUrl) throw new Error("No relayUrl configured on this client.");
     let res: Response;
     try {
       res = await doFetch(relayUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: serializeForRelay({ kind, network, instance, rail, ...body }),
+        body: serializeForRelay({ network, instance, kind, payload }),
       });
     } catch (e) {
       throw new RelayError(0, `Could not reach the relay (${e instanceof Error ? e.message : "network error"}).`);
@@ -336,6 +336,35 @@ export function createRailClient(config: RailClientConfig) {
     /** Payer refuses a SCHEDULED collection. */
     refuse: (collectionId: Hex): Promise<Hex> =>
       send(rail, encodeFunctionData({ abi: debitRailAbi, functionName: "refuse", args: [collectionId] })),
+    // ── creditor (merchant) actions ─────────────────────────────────────────
+    /** Registers the sending wallet as a creditor (owner). Creditor ids start at 1. */
+    registerCreditor: (name: string, payout: Address): Promise<Hex> =>
+      send(rail, encodeFunctionData({ abi: debitRailAbi, functionName: "registerCreditor", args: [name, payout] })),
+    /** Owner only: grants or removes an operator who may sign offers, pre-notify and cancel collections. */
+    setOperator: (creditorId: bigint, operator: Address, allowed: boolean): Promise<Hex> =>
+      send(rail, encodeFunctionData({ abi: debitRailAbi, functionName: "setOperator", args: [creditorId, operator, allowed] })),
+    /** Anyone may top up a reserve. The rail must already have an allowance on `token`. */
+    fundReserve: (creditorId: bigint, token: Address, amount: bigint): Promise<Hex> =>
+      send(rail, encodeFunctionData({ abi: debitRailAbi, functionName: "fundReserve", args: [creditorId, token, amount] })),
+    /** Owner only: withdraws from the FREE reserve. Above free it is refused with ReserveLocked (the simulation shows it before any gas). */
+    withdrawReserve: (creditorId: bigint, token: Address, amount: bigint, to: Address): Promise<Hex> =>
+      send(rail, encodeFunctionData({ abi: debitRailAbi, functionName: "withdrawReserve", args: [creditorId, token, amount, to] })),
+    /** Owner or operator: cancels an offer so it can no longer be accepted. */
+    cancelOffer: (offer: MandateOffer): Promise<Hex> =>
+      send(rail, encodeFunctionData({ abi: debitRailAbi, functionName: "cancelOffer", args: [offer] })),
+    /** Owner or operator: cancels a SCHEDULED collection. */
+    cancel: (collectionId: Hex): Promise<Hex> =>
+      send(rail, encodeFunctionData({ abi: debitRailAbi, functionName: "cancel", args: [collectionId] })),
+    /** Simulates a pre-notification from this wallet without sending it. Resolves, or throws with the revert data (use decodeRailError). */
+    async simulatePrenotify(mandateId: Hex, amount: bigint, dueAt: bigint, e2eId: Hex, remittanceInfo: string): Promise<void> {
+      const { account } = requireWallet();
+      await publicClient.call({
+        account,
+        to: rail,
+        data: encodeFunctionData({ abi: debitRailAbi, functionName: "prenotify", args: [mandateId, amount, dueAt, e2eId, remittanceInfo] }),
+      });
+    },
+
     /** Payer or creditor owner revokes a mandate. */
     revoke: (mandateId: Hex): Promise<Hex> =>
       send(rail, encodeFunctionData({ abi: debitRailAbi, functionName: "revoke", args: [mandateId] })),
@@ -351,13 +380,13 @@ export function createRailClient(config: RailClientConfig) {
       ),
 
     // ── relay (POST to relayUrl) ─────────────────────────────────────────────
-    /** POST {relayUrl} with kind "debtor-action". The relay submits and pays gas; resolves with the tx hash. */
+    /** POST {relayUrl} with `{ network, instance, kind: "action", payload }`. The relay submits and pays gas; resolves with the tx hash. */
     relayDebtorAction: (action: DebtorAction, debtor: Address, sig: Hex): Promise<Hex> =>
-      postRelay("debtor-action", { action, debtor, sig }),
-    /** POST {relayUrl} with kind "permit": the relay submits an EIP-2612 permit (for example to lower an allowance). */
+      postRelay("action", { action, debtor, sig }),
+    /** POST {relayUrl} with kind "permit" (payload carries the token, owner, spender and permit): the relay submits an EIP-2612 permit (for example to lower an allowance). */
     relayPermit: (token: Address, owner: Address, permit: PermitData): Promise<Hex> =>
       postRelay("permit", { token, owner, spender: rail, permit }),
-    /** POST {relayUrl} with kind "activate". The relay submits and pays gas; resolves with the tx hash. */
+    /** POST {relayUrl} with `{ network, instance, kind: "activate", payload }`. The relay submits and pays gas; resolves with the tx hash. */
     relayActivate: (
       offer: MandateOffer,
       offerSig: Hex,

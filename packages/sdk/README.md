@@ -41,7 +41,7 @@ const health = await rail.health();
 
 ## Relay protocol
 
-`relayUrl` is a single endpoint (the app uses `/api/relay`). `relayActivate`, `relayDebtorAction` and `relayPermit` all POST JSON to it, with `kind` set to `"activate"`, `"debtor-action"` or `"permit"` plus `network`, `instance` and `rail`. Bigints are decimal strings. The relay answers `{ "txHash": "0x..." }`, or a non-2xx status with `{ "error": "..." }`. An unreachable relay, or one that answers with something other than JSON (for example a dev server's HTML page), throws `RelayError` so the caller can offer to submit the transaction itself.
+`relayUrl` is a single endpoint (the app uses `/api/relay`). `relayActivate`, `relayDebtorAction` and `relayPermit` all POST JSON to it, as `{ network, instance, kind, payload }` with `kind` set to `"activate"`, `"action"` or `"permit"`. Bigints are decimal strings. The relay answers `{ "txHash": "0x..." }`, or a non-2xx status with `{ "error": "..." }`. An unreachable relay, or one that answers with something other than JSON (for example a dev server's HTML page), throws `RelayError` so the caller can offer to submit the transaction itself.
 
 ## Tests
 
