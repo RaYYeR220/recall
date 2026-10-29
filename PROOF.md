@@ -15,12 +15,13 @@ All four are verified on Sourcify (exact match). Deployed in block 28299079 by 0
 
 ## A real mandate on the prod rail
 
-Northwind Gym (creditor #1) holds a 0.10 EURC reserve. The payer signed a mandate without paying gas; a relayer submitted it. A 0.05 EURC collection was pre-notified at least one day ahead, due 2026-10-29T11:57:01.000Z. Once collected, the payer can take it back for eight weeks.
+Northwind Gym (creditor #1) holds a 0.10 EURC reserve. The payer signed a mandate without paying gas; a relayer submitted it. A 0.05 EURC collection was pre-notified at least one day ahead, due 2026-10-29T11:57:01.000Z. It was collected on 2026-10-29; the payer can take it back until 2026-12-24, eight weeks of real time.
 
 - Prod rail: creditor registered — [0xca02bd48…](https://explorer.arc.io/tx/0xca02bd4867cee19ee1d8f874217199d8fb31e2173b932f6d77245206503cbc6a)
 - Prod rail: reserve funded (0.10 EURC) — [0xdf653a79…](https://explorer.arc.io/tx/0xdf653a794c854fe6268c933804254e1cf23b5a1547bdaaad414003f35fb50a0f)
 - Prod rail: real mandate activated by relayer — [0x15f156b8…](https://explorer.arc.io/tx/0x15f156b87c98f7c44d3a77349712bd354d96ff748894fad32032e220e72153ca)
 - Prod rail: collection pre-notified, due 2026-10-29T11:57:01.000Z — [0x5cf86545…](https://explorer.arc.io/tx/0x5cf865455e2a0db04f3587c2f9084d7706f48d933f8f4721aa364894dab6e435)
+- Prod rail: collected — the payer can take it back until 2026-12-24T12:07:24.000Z — [0x182a652b…](https://explorer.arc.io/tx/0x182a652b27b35eb379afff750cbc3c2112f88e81368a27f0190368b031a18695)
 
 ## The full lifecycle on the demo rail
 

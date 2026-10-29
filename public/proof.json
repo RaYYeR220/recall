@@ -42,7 +42,9 @@
   "prodMandate": {
     "mandateId": "0x7121c72a008a8677e73235b9daf636fa282e000fd8ab043b7fcbb236cb8a569a",
     "collectionId": "0xd0d927cb076abf81c37ade9f1a542b73b51742eb3d73a1dcdc4a71f260428787",
-    "dueAt": "2026-10-29T11:57:01.000Z"
+    "dueAt": "2026-10-29T11:57:01.000Z",
+    "collectTx": "0x182a652b27b35eb379afff750cbc3c2112f88e81368a27f0190368b031a18695",
+    "refundOpenUntil": "2026-12-24T12:07:24.000Z"
   },
   "entries": [
     {
@@ -68,6 +70,12 @@
       "kind": "action",
       "rail": "prod",
       "hash": "0x5cf865455e2a0db04f3587c2f9084d7706f48d933f8f4721aa364894dab6e435"
+    },
+    {
+      "label": "Prod rail: collected; the 8-week refund window is open until 2026-12-24",
+      "kind": "action",
+      "rail": "prod",
+      "hash": "0x182a652b27b35eb379afff750cbc3c2112f88e81368a27f0190368b031a18695"
     },
     {
       "label": "Mandate signed by the payer, activated by a relayer (payer pays no gas)",
