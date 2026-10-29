@@ -6,8 +6,11 @@ Recall brings the rules of SEPA Direct Debit (Core) to EURC and USDC on [Arc](ht
 
 Live on Arc mainnet · EURC & USDC · no owner, no upgrades, no fees.
 
+- **App:** <https://recall-debit.vercel.app> · try a live debit on mainnet at [/demo](https://recall-debit.vercel.app/demo), no wallet needed
+- **Review in five minutes:** [JUDGES.md](JUDGES.md) · what we claim and how to check it: [CLAIMS.md](CLAIMS.md)
 - **Proof (every claim is an explorer link):** [PROOF.md](PROOF.md)
 - **Contracts:** [`contracts/src`](contracts/src) · security review: [`contracts/AUDIT.md`](contracts/AUDIT.md)
+- **Built in Arc Studio:** [project workspace](https://studio.arc.io/app/3449f08c-35f4-4216-af3d-c8ed28ce3d4c)
 
 ---
 
