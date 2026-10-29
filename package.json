@@ -8,11 +8,14 @@
     "deploy:self": "bun run ./scripts/self-deploy.ts",
     "compass:deploy": "bun run ./scripts/compass-deploy.ts",
     "fetch:abi": "bun run ./scripts/fetch-abi.ts",
-    "lint": "oxlint --type-aware src scripts --fix; s=$?; oxlint --fix .; exit $((s>0?s:$?))",
-    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware src scripts packages --fix; s=$?; oxlint --fix .; exit $((s>0?s:$?))",
+    "typecheck": "tsc --noEmit; a=$?; tsc --noEmit -p packages/sdk/tsconfig.json; b=$?; exit $((a>b?a:b))",
     "check": "bash scripts/check.sh",
     "contracts:build": "forge build",
-    "contracts:test": "forge test"
+    "contracts:test": "forge test",
+    "sdk:test": "cd packages/sdk && bun test",
+    "sdk:abi": "bun run ./scripts/gen-abi.ts",
+    "verify:onchain": "bun run ./scripts/verify-onchain.ts"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.19.2",
@@ -40,6 +43,7 @@
     "viem": "2.57.5"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.4",
     "@types/node": "^24.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
