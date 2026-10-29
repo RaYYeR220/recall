@@ -12,8 +12,8 @@ import {
   txUrl,
   type MandateOffer,
   type RailNetwork,
-} from "@recall/sdk";
-import { publicClientFor, railAddress, railFor, refusalOf, toTxResult } from "./chain";
+} from "../../packages/sdk/src/index.js";
+import { publicClientFor, railAddress, railFor, refusalOf, toTxResult } from "./chain.js";
 import {
   applyStep,
   canRun,
@@ -26,9 +26,9 @@ import {
   type DemoRun,
   type DemoStep,
   type Guard,
-} from "./demo-machine";
-import { accountFromEnv, configuredNetwork, ENV_NAMES, missingEnv } from "./env";
-import type { Kv } from "./kv";
+} from "./demo-machine.js";
+import { accountFromEnv, configuredNetwork, ENV_NAMES, missingEnv } from "./env.js";
+import type { Kv } from "./kv.js";
 import {
   acquireDemoLock,
   dayKey,
@@ -36,8 +36,8 @@ import {
   releaseDemoLock,
   takeDemoRun,
   touchDemoLock,
-} from "./limits";
-import { safeEqual } from "./http";
+} from "./limits.js";
+import { safeEqual } from "./http.js";
 
 export interface Reply {
   status: number;

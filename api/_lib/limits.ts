@@ -1,4 +1,4 @@
-import type { Kv } from "./kv";
+import type { Kv } from "./kv.js";
 
 export const DAY_SECONDS = 86_400;
 

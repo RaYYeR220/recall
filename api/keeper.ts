@@ -1,8 +1,8 @@
-import type { RailInstance } from "@recall/sdk";
-import { toTxResult, railFor, refusalOf } from "./_lib/chain";
-import { accountFromEnv, configuredNetwork, ENV_NAMES, parseKeeperCreditors, readEnv } from "./_lib/env";
-import { json, methodNotAllowed, safeEqual } from "./_lib/http";
-import { MAX_KEEPER_TXS, planKeeperActions, presentedSecret, type KeeperItem } from "./_lib/keeper-core";
+import type { RailInstance } from "../packages/sdk/src/index.js";
+import { toTxResult, railFor, refusalOf } from "./_lib/chain.js";
+import { accountFromEnv, configuredNetwork, ENV_NAMES, parseKeeperCreditors, readEnv } from "./_lib/env.js";
+import { json, methodNotAllowed, safeEqual } from "./_lib/http.js";
+import { MAX_KEEPER_TXS, planKeeperActions, presentedSecret, type KeeperItem } from "./_lib/keeper-core.js";
 
 /**
  * GET (header `x-cron-secret: $CRON_SECRET`, or `Authorization: Bearer $CRON_SECRET` from Vercel Cron).

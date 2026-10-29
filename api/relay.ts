@@ -1,10 +1,10 @@
 import { encodeFunctionData } from "viem";
-import { debitRailAbi, networkInfo, railAddresses } from "@recall/sdk";
-import { accountFromEnv, configuredNetwork, ENV_NAMES } from "./_lib/env";
-import { json, clientIp, methodNotAllowed, readJson } from "./_lib/http";
-import { getKv } from "./_lib/kv";
-import { publicClientFor, railFor } from "./_lib/chain";
-import { handleRelay, type RelayRequest } from "./_lib/relay-core";
+import { debitRailAbi, networkInfo, railAddresses } from "../packages/sdk/src/index.js";
+import { accountFromEnv, configuredNetwork, ENV_NAMES } from "./_lib/env.js";
+import { json, clientIp, methodNotAllowed, readJson } from "./_lib/http.js";
+import { getKv } from "./_lib/kv.js";
+import { publicClientFor, railFor } from "./_lib/chain.js";
+import { handleRelay, type RelayRequest } from "./_lib/relay-core.js";
 
 /**
  * POST { network, instance, kind: "activate" | "action", payload }

@@ -8,11 +8,11 @@ import {
   type Hex,
   type PublicClient,
 } from "viem";
-import { debitRailAbi } from "./abi";
-import { offerTypedData, railDomain } from "./eip712";
-import { RAIL_INSTANCES, RAIL_NETWORKS, TIME_SCALE, type RailInstance, type RailNetwork } from "./networks";
-import { mandateTextForOffer, termsHash } from "./terms";
-import type { MandateOffer } from "./types";
+import { debitRailAbi } from "./abi.js";
+import { offerTypedData, railDomain } from "./eip712.js";
+import { RAIL_INSTANCES, RAIL_NETWORKS, TIME_SCALE, type RailInstance, type RailNetwork } from "./networks.js";
+import { mandateTextForOffer, termsHash } from "./terms.js";
+import type { MandateOffer } from "./types.js";
 
 /** Everything a payer's browser needs to review and accept a mandate. */
 export interface CheckoutLinkPayload {

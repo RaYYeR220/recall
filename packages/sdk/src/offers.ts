@@ -1,5 +1,5 @@
-import { TIME_SCALE, type RailInstance } from "./networks";
-import type { MandateOffer } from "./types";
+import { TIME_SCALE, type RailInstance } from "./networks.js";
+import type { MandateOffer } from "./types.js";
 
 /** The demo rail caps what an offer may ask for, so a public demo cannot move real money. */
 export const DEMO_MAX_PER_COLLECTION = 1_000_000n;

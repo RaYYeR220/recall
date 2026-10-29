@@ -1,7 +1,7 @@
 import { hashDomain, parseSignature, type Address, type Hex, type PublicClient } from "viem";
-import { debitRailAbi } from "./abi";
-import { erc20Abi } from "./erc20";
-import type { DebtorAction, MandateAcceptance, MandateOffer, PermitData } from "./types";
+import { debitRailAbi } from "./abi.js";
+import { erc20Abi } from "./erc20.js";
+import type { DebtorAction, MandateAcceptance, MandateOffer, PermitData } from "./types.js";
 
 export interface RailDomain {
   name: string;

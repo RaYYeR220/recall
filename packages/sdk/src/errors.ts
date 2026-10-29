@@ -1,5 +1,5 @@
 import { decodeErrorResult, hexToString, isHex, type Hex } from "viem";
-import { debitRailAbi } from "./abi";
+import { debitRailAbi } from "./abi.js";
 
 export interface RailError {
   /** Solidity error name, e.g. "MD01_NoValidMandate". "Error" for a plain revert string, "Panic", or "UnknownError". */

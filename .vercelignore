@@ -1,0 +1,12 @@
+/ops-private
+.secrets
+.env
+.env.*
+.arc-studio
+/node_modules
+/lib
+contracts/out
+contracts/cache
+/broadcast
+/dist
+*.bundle

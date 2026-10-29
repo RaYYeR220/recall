@@ -11,8 +11,8 @@ import {
   type RailError,
   type RailInstance,
   type RailNetwork,
-} from "@recall/sdk";
-import { ENV_NAMES, readEnv } from "./env";
+} from "../../packages/sdk/src/index.js";
+import { ENV_NAMES, readEnv } from "./env.js";
 
 const clients = new Map<string, PublicClient>();
 

@@ -1,7 +1,7 @@
-import { RAIL_INSTANCES, type RailInstance } from "@recall/sdk";
-import { railFor } from "./_lib/chain";
-import { configuredNetwork } from "./_lib/env";
-import { json, methodNotAllowed } from "./_lib/http";
+import { RAIL_INSTANCES, type RailInstance } from "../packages/sdk/src/index.js";
+import { railFor } from "./_lib/chain.js";
+import { configuredNetwork } from "./_lib/env.js";
+import { json, methodNotAllowed } from "./_lib/http.js";
 
 const TTL_MS = 15_000;
 let cache: { at: number; network: string; body: Record<string, unknown> } | undefined;

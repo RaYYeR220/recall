@@ -9,9 +9,9 @@ import {
   type PermitData,
   type RailInstance,
   type RailNetwork,
-} from "@recall/sdk";
-import type { Kv } from "./kv";
-import { takeRelaySlot, type RelayLimits } from "./limits";
+} from "../../packages/sdk/src/index.js";
+import type { Kv } from "./kv.js";
+import { takeRelaySlot, type RelayLimits } from "./limits.js";
 
 export type RelayRequest =
   | { kind: "activate"; offer: MandateOffer; offerSig: Hex; acceptance: MandateAcceptance; debtorSig: Hex; permit?: PermitData }

@@ -1,6 +1,6 @@
 import { defineChain, getAddress, type Address, type Chain } from "viem";
-import arcMainnetDeployment from "../../../deployments/5042.json";
-import arcTestnetDeployment from "../../../deployments/5042002.json";
+import arcMainnetDeployment from "../../../deployments/5042.json" with { type: "json" };
+import arcTestnetDeployment from "../../../deployments/5042002.json" with { type: "json" };
 
 export type RailNetwork = "arc" | "arc-testnet";
 export type RailInstance = "prod" | "demo";

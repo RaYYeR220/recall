@@ -1,4 +1,4 @@
-import { serializeForRelay } from "@recall/sdk";
+import { serializeForRelay } from "../../packages/sdk/src/index.js";
 
 /** JSON response; bigints become decimal strings. */
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {

@@ -1,8 +1,8 @@
-import { clientIp, json, methodNotAllowed, readJson } from "../_lib/http";
-import { demoContext, notConfigured, stepCollect, stepPrenotify, stepRefund, stepStart, stepStatus, type Reply } from "../_lib/demo";
-import { provoke } from "../_lib/demo-provoke";
-import { getKv } from "../_lib/kv";
-import { takeDaily } from "../_lib/limits";
+import { clientIp, json, methodNotAllowed, readJson } from "../_lib/http.js";
+import { demoContext, notConfigured, stepCollect, stepPrenotify, stepRefund, stepStart, stepStatus, type Reply } from "../_lib/demo.js";
+import { provoke } from "../_lib/demo-provoke.js";
+import { getKv } from "../_lib/kv.js";
+import { takeDaily } from "../_lib/limits.js";
 
 const STEPS = ["start", "prenotify", "collect", "refund", "status", "provoke"] as const;
 type Step = (typeof STEPS)[number];

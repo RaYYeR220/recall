@@ -1,8 +1,8 @@
 import { formatUnits, keccak256, pad, stringToBytes, stringToHex, type Address, type Hex } from "viem";
-import { Scheme, type SchemeName } from "./types";
-import { TIME_SCALE, TOKEN_DECIMALS, networkInfo, type RailInstance, type RailNetwork } from "./networks";
-import { e2eIdText } from "./camt054";
-import type { MandateOffer } from "./types";
+import { Scheme, type SchemeName } from "./types.js";
+import { TIME_SCALE, TOKEN_DECIMALS, networkInfo, type RailInstance, type RailNetwork } from "./networks.js";
+import { e2eIdText } from "./camt054.js";
+import type { MandateOffer } from "./types.js";
 
 /** Refund window, lapse period: the legal (unscaled) values the contract divides by timeScale. */
 const LEGAL_REFUND_WINDOW_S = 8 * 7 * 86_400;

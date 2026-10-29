@@ -10,7 +10,7 @@ import {
   type PublicClient,
   type WalletClient,
 } from "viem";
-import { debitRailAbi, railLensAbi } from "./abi";
+import { debitRailAbi, railLensAbi } from "./abi.js";
 import {
   acceptanceTypedData,
   debtorActionTypedData,
@@ -19,8 +19,8 @@ import {
   railDomain,
   toPermitData,
   type RailDomain,
-} from "./eip712";
-import { erc20Abi, memoAbi } from "./erc20";
+} from "./eip712.js";
+import { erc20Abi, memoAbi } from "./erc20.js";
 import {
   MEMO_ADDRESS,
   TIME_SCALE,
@@ -28,7 +28,7 @@ import {
   railAddresses,
   type RailInstance,
   type RailNetwork,
-} from "./networks";
+} from "./networks.js";
 import {
   ActionKind,
   type ActionKindName,
@@ -37,7 +37,7 @@ import {
   type MandateOffer,
   type PermitData,
   type SignedDebtorAction,
-} from "./types";
+} from "./types.js";
 
 export interface RailClientConfig {
   network: RailNetwork;

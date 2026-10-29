@@ -1,6 +1,6 @@
 import process from "node:process";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import type { RailNetwork } from "@recall/sdk";
+import type { RailNetwork } from "../../packages/sdk/src/index.js";
 
 /** Every secret and setting the functions read. Values come from the environment only; nothing is ever defaulted to a key. */
 export const ENV_NAMES = {

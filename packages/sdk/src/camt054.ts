@@ -1,6 +1,6 @@
 import { formatUnits, hexToBytes, type Address, type Hex } from "viem";
-import { decodeReturnCode, returnCodeLabel } from "./errors";
-import { TOKEN_DECIMALS, networkInfo, type RailInstance, type RailNetwork } from "./networks";
+import { decodeReturnCode, returnCodeLabel } from "./errors.js";
+import { TOKEN_DECIMALS, networkInfo, type RailInstance, type RailNetwork } from "./networks.js";
 
 /**
  * One line of a statement: a collection, a refund of it, or a return (a collection that was

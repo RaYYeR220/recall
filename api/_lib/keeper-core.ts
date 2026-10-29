@@ -1,5 +1,5 @@
 import type { Hex } from "viem";
-import { CollectionStatus, collectionIdOf, Scheme, type RailInstance } from "@recall/sdk";
+import { CollectionStatus, collectionIdOf, Scheme, type RailInstance } from "../../packages/sdk/src/index.js";
 
 export interface KeeperWindows {
   refundWindow: number;

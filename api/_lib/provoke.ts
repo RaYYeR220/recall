@@ -1,4 +1,4 @@
-import proof from "../../public/proof.json";
+import proof from "../../public/proof.json" with { type: "json" };
 
 /** The six ways to try to break the rail, mapped to the contract error each one must produce. */
 export const PROVOKE_CASES = {

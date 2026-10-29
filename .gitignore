@@ -46,3 +46,5 @@ scripts/compass-deploy-helpers.ts
 scripts/self-deploy.ts
 scripts/fetch-abi.ts
 dist/
+
+.vercel

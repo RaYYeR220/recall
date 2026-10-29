@@ -1,11 +1,11 @@
 import { encodeFunctionData, type Hex } from "viem";
-import { debitRailAbi, MandateStatus, networkInfo, txUrl, type RailNetwork } from "@recall/sdk";
-import { publicClientFor, railAddress, railFor, refusalOf, type Refusal } from "./chain";
-import { demoContext, houseCreditorId, type DemoContext, type Reply } from "./demo";
-import { isProvokeCase, PROVOKE_CASES, recordedRefusal, type ProvokeCase } from "./provoke";
-import type { DemoRun } from "./demo-machine";
-import type { Kv } from "./kv";
-import { configuredNetwork } from "./env";
+import { debitRailAbi, MandateStatus, networkInfo, txUrl, type RailNetwork } from "../../packages/sdk/src/index.js";
+import { publicClientFor, railAddress, railFor, refusalOf, type Refusal } from "./chain.js";
+import { demoContext, houseCreditorId, type DemoContext, type Reply } from "./demo.js";
+import { isProvokeCase, PROVOKE_CASES, recordedRefusal, type ProvokeCase } from "./provoke.js";
+import type { DemoRun } from "./demo-machine.js";
+import type { Kv } from "./kv.js";
+import { configuredNetwork } from "./env.js";
 
 type Source = "live" | "replayed" | "recorded";
 

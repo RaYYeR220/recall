@@ -1,5 +1,5 @@
 import { isHex, size, type Hex } from "viem";
-import { TOKEN_DECIMALS } from "./networks";
+import { TOKEN_DECIMALS } from "./networks.js";
 
 export interface BatchRow {
   /** 1-based line number in the file (the header is line 1). */
