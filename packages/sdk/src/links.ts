@@ -11,7 +11,7 @@ import {
 import { debitRailAbi } from "./abi";
 import { offerTypedData, railDomain } from "./eip712";
 import { RAIL_INSTANCES, RAIL_NETWORKS, TIME_SCALE, type RailInstance, type RailNetwork } from "./networks";
-import { termsHash } from "./terms";
+import { mandateTextForOffer, termsHash } from "./terms";
 import type { MandateOffer } from "./types";
 
 /** Everything a payer's browser needs to review and accept a mandate. */
@@ -20,6 +20,11 @@ export interface CheckoutLinkPayload {
   instance: RailInstance;
   offer: MandateOffer;
   offerSig: Hex;
+  /**
+   * UNAUTHENTICATED display data: nobody signed it, so anyone who edits the link can change it.
+   * Never show it as the creditor's name. Read the name from the rail (`verifyOfferSignature` /
+   * `verifyCheckoutLink` return it) and treat a difference as an attack.
+   */
   creditorName: string;
   /** The exact mandate text. `keccak256(terms)` must equal `offer.termsHash`. */
   terms: string;
@@ -260,6 +265,8 @@ export interface OfferSignatureResult {
   /** Recovered signer, when the signature is an ECDSA signature. */
   signer?: Address;
   role?: "owner" | "operator";
+  /** The creditor's name as registered on the rail. This, never the name in a link, is what to show. */
+  creditorName?: string;
   /** Why the check failed (when `valid` is false). */
   reason?: string;
 }
@@ -267,6 +274,7 @@ export interface OfferSignatureResult {
 /**
  * Checks that `sig` over `offer` was made by the creditor's owner or one of its operators, and that
  * the offer is aimed at this rail (time scale). Smart-contract owners (ERC-1271) are supported.
+ * The creditor's name is read from the rail (`getCreditor`) and returned as `creditorName`.
  */
 export async function verifyOfferSignature(
   publicClient: PublicClient,
@@ -274,27 +282,19 @@ export async function verifyOfferSignature(
   offer: MandateOffer,
   sig: Hex,
 ): Promise<OfferSignatureResult> {
-  const [domain, railTimeScale] = await Promise.all([
+  const [domain, railTimeScale, creditor] = await Promise.all([
     railDomain(publicClient, rail),
     publicClient.readContract({ address: rail, abi: debitRailAbi, functionName: "timeScale" }),
+    publicClient
+      .readContract({ address: rail, abi: debitRailAbi, functionName: "getCreditor", args: [offer.creditorId] })
+      .catch(() => undefined),
   ]);
   if (offer.timeScale !== railTimeScale) {
     return { valid: false, reason: `Offer time scale ${offer.timeScale} does not match this rail (${railTimeScale}).` };
   }
-
-  let owner: Address;
-  try {
-    const creditor = await publicClient.readContract({
-      address: rail,
-      abi: debitRailAbi,
-      functionName: "getCreditor",
-      args: [offer.creditorId],
-    });
-    owner = creditor.owner;
-  } catch {
-    return { valid: false, reason: "Unknown creditor." };
-  }
-  if (/^0x0{40}$/i.test(owner)) return { valid: false, reason: "Unknown creditor." };
+  if (!creditor || /^0x0{40}$/i.test(creditor.owner)) return { valid: false, reason: "Unknown creditor." };
+  const owner = creditor.owner;
+  const creditorName = creditor.name;
 
   const typed = offerTypedData(domain, offer);
 
@@ -306,20 +306,20 @@ export async function verifyOfferSignature(
   }
 
   if (signer) {
-    if (signer.toLowerCase() === owner.toLowerCase()) return { valid: true, signer, role: "owner" };
+    if (signer.toLowerCase() === owner.toLowerCase()) return { valid: true, signer, role: "owner", creditorName };
     const isOp = await publicClient.readContract({
       address: rail,
       abi: debitRailAbi,
       functionName: "isOperator",
       args: [offer.creditorId, signer],
     });
-    if (isOp) return { valid: true, signer, role: "operator" };
+    if (isOp) return { valid: true, signer, role: "operator", creditorName };
   }
 
   // Smart-contract owner (ERC-1271)?
   try {
     const ok = await publicClient.verifyTypedData({ ...typed, address: owner, signature: sig });
-    if (ok) return { valid: true, signer: signer ?? owner, role: "owner" };
+    if (ok) return { valid: true, signer: signer ?? owner, role: "owner", creditorName };
   } catch {
     // ignore: treated as invalid below
   }
@@ -327,6 +327,121 @@ export async function verifyOfferSignature(
   return {
     valid: false,
     signer,
+    creditorName,
     reason: signer ? "Signer is neither the creditor's owner nor an operator." : "Signature is malformed.",
+  };
+}
+
+// ── full checkout-link verification ──────────────────────────────────────────
+
+export type CheckoutProblemCode =
+  | "BadSignature"
+  | "UnknownCreditor"
+  | "CreditorNameMismatch"
+  | "TermsMismatch"
+  | "WrongTimeScale"
+  | "TokenNotAllowed";
+
+export interface CheckoutProblem {
+  code: CheckoutProblemCode;
+  message: string;
+}
+
+export interface CheckoutVerification {
+  /** True only when every check passed. Do not let anyone sign otherwise. */
+  valid: boolean;
+  signature: OfferSignatureResult;
+  /** The name registered on the rail. Show this, never `decoded.creditorName`. */
+  creditorName?: string;
+  /** The link's (unauthenticated) name equals the registered one. */
+  nameMatches: boolean;
+  /** `terms` equals the text rebuilt from the offer fields and the registered name, character for character. */
+  textMatches: boolean;
+  timeScaleMatches: boolean;
+  /** The text the offer's own fields describe. Useful to show a diff. */
+  expectedTerms?: string;
+  problems: CheckoutProblem[];
+}
+
+/**
+ * Verifies a decoded checkout link against the rail:
+ *  1. the offer signature is the creditor owner's or an operator's;
+ *  2. the mandate text is exactly the text `mandateTextForOffer` writes for these offer fields and the
+ *     creditor name registered on the rail (so text and fields cannot disagree, and the name in the
+ *     link is not trusted);
+ *  3. the offer's time scale is the rail's.
+ * The link's own `creditorName` is display data nobody signed: a mismatch is reported, and `valid` is false.
+ */
+export async function verifyCheckoutLink(
+  publicClient: PublicClient,
+  rail: Address,
+  decoded: CheckoutLinkPayload,
+): Promise<CheckoutVerification> {
+  const { offer } = decoded;
+  const [signature, railTimeScale, eurc, usdc] = await Promise.all([
+    verifyOfferSignature(publicClient, rail, offer, decoded.offerSig),
+    publicClient.readContract({ address: rail, abi: debitRailAbi, functionName: "timeScale" }),
+    publicClient.readContract({ address: rail, abi: debitRailAbi, functionName: "eurc" }),
+    publicClient.readContract({ address: rail, abi: debitRailAbi, functionName: "usdc" }),
+  ]);
+
+  const problems: CheckoutProblem[] = [];
+  const creditorName = signature.creditorName;
+  const timeScaleMatches = offer.timeScale === railTimeScale;
+  if (!timeScaleMatches) {
+    problems.push({
+      code: "WrongTimeScale",
+      message: `The offer is for time scale ${offer.timeScale}, but this rail runs at ${railTimeScale}.`,
+    });
+  }
+
+  if (creditorName === undefined) {
+    if (timeScaleMatches) problems.push({ code: "UnknownCreditor", message: "This creditor is not registered on the rail." });
+  } else if (!signature.valid && timeScaleMatches) {
+    problems.push({ code: "BadSignature", message: signature.reason ?? "The offer was not signed by the creditor or an operator." });
+  }
+
+  const nameMatches = creditorName !== undefined && creditorName === decoded.creditorName;
+  if (creditorName !== undefined && !nameMatches) {
+    problems.push({
+      code: "CreditorNameMismatch",
+      message: `The link calls the creditor "${decoded.creditorName}", but the rail has it registered as "${creditorName}".`,
+    });
+  }
+
+  const symbol =
+    offer.token.toLowerCase() === eurc.toLowerCase() ? "EURC" : offer.token.toLowerCase() === usdc.toLowerCase() ? "USDC" : undefined;
+  if (!symbol) {
+    problems.push({ code: "TokenNotAllowed", message: "The offer names a token the rail does not accept." });
+  }
+
+  let expectedTerms: string | undefined;
+  let textMatches = false;
+  if (symbol && creditorName !== undefined) {
+    expectedTerms = mandateTextForOffer(offer, {
+      creditorName,
+      network: decoded.network,
+      instance: decoded.instance,
+      rail,
+      token: symbol,
+    });
+    textMatches = expectedTerms === decoded.terms;
+    if (!textMatches) {
+      problems.push({
+        code: "TermsMismatch",
+        message: "The mandate text does not describe this offer. It differs from the text its own limits produce.",
+      });
+    }
+  }
+
+  return {
+    valid: problems.length === 0 && signature.valid,
+    signature,
+    creditorName,
+    nameMatches,
+    textMatches,
+    timeScaleMatches,
+    expectedTerms,
+    problems,
   };
 }

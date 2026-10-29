@@ -3,8 +3,9 @@ import type { Address, Hex } from 'viem'
 import {
   debitRailAbi,
   tokenByAddress,
-  verifyOfferSignature,
+  verifyCheckoutLink,
   type CheckoutLinkPayload,
+  type CheckoutVerification,
   type OfferSignatureResult,
   type TokenInfo,
 } from '@recall/sdk'
@@ -13,6 +14,8 @@ import { readRail } from '@/hooks/useWallet'
 
 export interface OfferCheck {
   signature: OfferSignatureResult
+  /** Signature, registered name, text-vs-fields and time-scale checks, all against the rail. */
+  verification: CheckoutVerification
   creditor: { owner: Address; payout: Address; name: string } | null
   offerHash: Hex
   cancelled: boolean
@@ -30,12 +33,12 @@ export function useOfferCheck(payload: CheckoutLinkPayload | null) {
     queryKey: ['offer-check', payload?.network, payload?.instance, payload?.offerSig, payload?.offer.termsHash, payload?.offer.offerRef],
     queryFn: async (): Promise<OfferCheck> => {
       if (!payload) throw new Error('no link')
-      const { network, instance, offer, offerSig } = payload
+      const { network, instance, offer } = payload
       const rail = readRail(network, instance)
       const pc = getPublicClient(network)
 
-      const [signature, offerHash, block, windows] = await Promise.all([
-        verifyOfferSignature(pc, rail.rail, offer, offerSig),
+      const [verification, offerHash, block, windows] = await Promise.all([
+        verifyCheckoutLink(pc, rail.rail, payload),
         rail.offerHash(offer),
         pc.getBlock(),
         rail.windows(),
@@ -49,7 +52,8 @@ export function useOfferCheck(payload: CheckoutLinkPayload | null) {
           .catch(() => null),
       ])
       return {
-        signature,
+        signature: verification.signature,
+        verification,
         creditor,
         offerHash,
         cancelled,

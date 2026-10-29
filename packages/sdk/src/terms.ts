@@ -1,6 +1,8 @@
 import { formatUnits, keccak256, pad, stringToBytes, stringToHex, type Address, type Hex } from "viem";
 import { Scheme, type SchemeName } from "./types";
 import { TIME_SCALE, TOKEN_DECIMALS, networkInfo, type RailInstance, type RailNetwork } from "./networks";
+import { e2eIdText } from "./camt054";
+import type { MandateOffer } from "./types";
 
 /** Refund window, lapse period: the legal (unscaled) values the contract divides by timeScale. */
 const LEGAL_REFUND_WINDOW_S = 8 * 7 * 86_400;
@@ -154,4 +156,33 @@ export function refToBytes32(ref: string): Hex {
   if (bytes.length === 0) throw new Error("refToBytes32: empty reference");
   if (bytes.length <= 32) return pad(stringToHex(ref), { size: 32, dir: "right" });
   return keccak256(bytes);
+}
+
+/**
+ * The canonical mandate text for an offer: built ONLY from the offer's own fields plus the creditor's
+ * registered name, so the text cannot promise anything the fields do not. Merchants write this text
+ * (and hash it into the offer's `termsHash`); `verifyCheckoutLink` rebuilds it and demands equality.
+ */
+export function mandateTextForOffer(
+  offer: MandateOffer,
+  ctx: { creditorName: string; network: RailNetwork; instance: RailInstance; rail: Address; token: "EURC" | "USDC" },
+): string {
+  return mandateText({
+    creditorName: ctx.creditorName,
+    creditorId: offer.creditorId,
+    instance: ctx.instance,
+    network: ctx.network,
+    rail: ctx.rail,
+    token: ctx.token,
+    scheme: offer.scheme,
+    oneOff: offer.oneOff,
+    maxPerCollection: offer.maxPerCollection,
+    maxPerPeriod: offer.maxPerPeriod,
+    periodLength: offer.periodLength,
+    prenoticeLength: offer.prenoticeLength,
+    maxUses: offer.maxUses,
+    validUntil: offer.validUntil,
+    debtor: offer.debtor,
+    offerRef: e2eIdText(offer.offerRef),
+  });
 }

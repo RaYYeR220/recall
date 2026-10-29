@@ -37,7 +37,7 @@ const health = await rail.health();
 
 ## Checkout links
 
-`encodeCheckoutLink(base, payload)` puts the payload in the URL fragment (`#r=<base64url JSON>`), so it never reaches a server. `decodeCheckoutLink` checks the shape, the instance time scale, and that the terms text hashes to the signed `termsHash`. Call `verifyOfferSignature` before showing the link as valid.
+`encodeCheckoutLink(base, payload)` puts the payload in the URL fragment (`#r=<base64url JSON>`), so it never reaches a server. `decodeCheckoutLink` checks the shape, the instance time scale, and that the terms text hashes to the signed `termsHash`. The creditor name inside a link is unauthenticated display data. Always call `verifyCheckoutLink(publicClient, rail, decoded)` before showing or signing: it verifies the offer signature, reads the creditor name from the rail (returned as `creditorName`, shown instead of the link's), rebuilds the mandate text with `mandateTextForOffer` from the offer's own fields and requires it to equal `terms` exactly, and checks the time scale. Merchants must write their text with `mandateTextForOffer` too. Show every limit from `decoded.offer`, never from the text.
 
 ## Relay protocol
 

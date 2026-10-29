@@ -34,7 +34,6 @@ export function Summary({
   const named = offer.debtor !== ZERO_ADDRESS
   const scaled = (legal: number) => (demo ? `${durationText(Math.max(1, Math.floor(legal / scale)))} on this rail` : undefined)
   const refundWindow = Number(check.windows.refundWindow)
-  const linkName = payload.creditorName.trim()
 
   return (
     <div>
@@ -57,12 +56,6 @@ export function Summary({
           ? ' For eight weeks after any debit you can take it back.'
           : ' This is a business mandate: debits are final once they settle.'}
       </p>
-      {linkName && linkName !== creditorName && (
-        <p className="mt-3 rounded-panel border border-danger/30 px-3.5 py-2.5 text-[12.5px] leading-snug text-ink-2" role="note">
-          The link calls this creditor <span className="mono text-danger">{linkName}</span>, but the contract has creditor #
-          {offer.creditorId.toString()} registered as <span className="mono text-ink">{creditorName}</span>. Go by the contract.
-        </p>
-      )}
 
       <dl className="mt-8 grid gap-3 sm:grid-cols-2">
         <Fact label="Token" value={token.symbol} note={<ExtLink href={addressUrl(network, token.address)}>{shortAddress(token.address)}</ExtLink>} />
@@ -116,7 +109,7 @@ export function Summary({
             The mandate text
           </h2>
           <span className="mono text-[11.5px] text-ink-3" title={offer.termsHash}>
-            fingerprint {shortHash(offer.termsHash)} · matches what was signed
+            fingerprint {shortHash(offer.termsHash)} · matches what was signed and the limits above
           </span>
         </div>
         <div

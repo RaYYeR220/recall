@@ -159,6 +159,40 @@ export function MandateScreen() {
       </Narrow>
     )
   }
+  // 3b. what the link claims must match what the rail and the signed offer say. Any difference blocks signing.
+  const v = c.verification
+  if (!v.nameMatches) {
+    return (
+      <Narrow>
+        <ErrorPanel code="CreditorNameMismatch" title="The name in this link is not the creditor's registered name.">
+          The link calls the creditor <span className="mono text-danger">{p.creditorName}</span>. The contract has creditor #
+          {offer.creditorId.toString()} registered as <span className="mono text-ink">{c.creditor.name}</span>. The name in a link
+          is not signed by anyone, so it may have been edited. Nothing was signed. Ask the merchant for a fresh link, and don&rsquo;t
+          sign this one.
+        </ErrorPanel>
+      </Narrow>
+    )
+  }
+  if (!v.textMatches) {
+    return (
+      <Narrow>
+        <ErrorPanel code="TermsMismatch" title="The mandate text does not describe this offer.">
+          The text in the link says something different from the limits the creditor actually signed (scheme, token, caps,
+          period, notice, uses, expiry or payer). The contract enforces the signed limits, not the text, so signing could
+          mean agreeing to more than you were told. Nothing was signed. Don&rsquo;t sign this one.
+        </ErrorPanel>
+      </Narrow>
+    )
+  }
+  if (!v.valid) {
+    return (
+      <Narrow>
+        <ErrorPanel code={v.problems[0]?.code ?? 'LinkInvalid'} title="This link could not be verified.">
+          {v.problems.map((x) => x.message).join(' ') || 'Verification failed.'} Nothing was signed.
+        </ErrorPanel>
+      </Narrow>
+    )
+  }
   if (!c.token) {
     return (
       <Narrow>
