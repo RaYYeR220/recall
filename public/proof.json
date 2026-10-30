@@ -192,6 +192,82 @@
       "rail": "demo",
       "error": "MD01_NoValidMandate",
       "hash": "0x7c663c0a965059dc80d9932ef69ee89e2510ebe7dde1d045187c7dfcd129a424"
+    },
+    {
+      "label": "From the app (run A): mandate signed by the payer, activated without gas",
+      "kind": "action",
+      "rail": "demo",
+      "source": "app",
+      "hash": "0x7dbb6c3f66506950304dc0e966a68a836ddc3b2d0c4a00cba6433e7c9e95ff60"
+    },
+    {
+      "label": "From the app (run A): 0.02 USDC debit pre-notified",
+      "kind": "action",
+      "rail": "demo",
+      "source": "app",
+      "hash": "0x747e822d650f90800f9ccf6fb7addcfe37b7fede2e582e274610fa64a1575af1"
+    },
+    {
+      "label": "From the app (run A): collected: 0.02 USDC payer → rail → merchant (sent through the Arc Memo contract)",
+      "kind": "action",
+      "rail": "demo",
+      "source": "app",
+      "hash": "0x8606d49b34b97f24853a063bdca4c9ec27ff5d09d6e606b40c4db52f7e5f35fe"
+    },
+    {
+      "label": "From the app (run A): refunded in one click: 0.02 USDC back to the payer (MD06)",
+      "kind": "action",
+      "rail": "demo",
+      "source": "app",
+      "hash": "0xaa1b582877dbd98a2dfe33058fc173f8a86e9e774f232bc5893410526ac789b0"
+    },
+    {
+      "label": "From the app (run B): mandate signed by the payer, activated without gas",
+      "kind": "action",
+      "rail": "demo",
+      "source": "app",
+      "hash": "0x35f420b784d12c63cac34128b7145b840ea5ea4d6b1fb4756265bb610e36c9e9"
+    },
+    {
+      "label": "From the app (run B): 0.02 USDC debit pre-notified",
+      "kind": "action",
+      "rail": "demo",
+      "source": "app",
+      "hash": "0xf60d965dbe5d77806da36f3fb5f16f5f411b321134932db266cbf05c04a1f7e2"
+    },
+    {
+      "label": "From the app (run B): collected: 0.02 USDC payer → rail → merchant (sent through the Arc Memo contract)",
+      "kind": "action",
+      "rail": "demo",
+      "source": "app",
+      "hash": "0x3798ef571dfc52669ab61567c3a7e2b7e3d5c772c7866685200ec3202373f261"
+    },
+    {
+      "label": "From the app (run B): refunded in one click: 0.02 USDC back to the payer (MD06)",
+      "kind": "action",
+      "rail": "demo",
+      "source": "app",
+      "hash": "0xc7e55718cad74aa6c5b0a9fd34ed502939bfca891a72392ee1afba2da3212b1a"
+    }
+  ],
+  "appRuns": [
+    {
+      "name": "run A",
+      "tx": {
+        "start": "0x7dbb6c3f66506950304dc0e966a68a836ddc3b2d0c4a00cba6433e7c9e95ff60",
+        "prenotify": "0x747e822d650f90800f9ccf6fb7addcfe37b7fede2e582e274610fa64a1575af1",
+        "collect": "0x8606d49b34b97f24853a063bdca4c9ec27ff5d09d6e606b40c4db52f7e5f35fe",
+        "refund": "0xaa1b582877dbd98a2dfe33058fc173f8a86e9e774f232bc5893410526ac789b0"
+      }
+    },
+    {
+      "name": "run B",
+      "tx": {
+        "start": "0x35f420b784d12c63cac34128b7145b840ea5ea4d6b1fb4756265bb610e36c9e9",
+        "prenotify": "0xf60d965dbe5d77806da36f3fb5f16f5f411b321134932db266cbf05c04a1f7e2",
+        "collect": "0x3798ef571dfc52669ab61567c3a7e2b7e3d5c772c7866685200ec3202373f261",
+        "refund": "0xc7e55718cad74aa6c5b0a9fd34ed502939bfca891a72392ee1afba2da3212b1a"
+      }
     }
   ]
 }

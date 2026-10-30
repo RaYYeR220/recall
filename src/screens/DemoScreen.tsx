@@ -94,9 +94,12 @@ export function DemoScreen() {
   const noticeLeft = run?.dueAt !== undefined && run.phase === 'prenotified' ? Math.max(0, run.dueAt - now) : null
   const refundLeft = run?.phase === 'collected' && run.settledAt !== undefined && run.refundWindow !== undefined ? Math.max(0, run.settledAt + run.refundWindow - now) : null
   const stepState = (s: DemoStepName): 'todo' | 'next' | 'done' => {
-    // A finished run must not lock the page: the first step is always available again, and only the visitor who ran
-    // it still sees their own completed steps.
-    if (inactive) return s === 'start' ? 'next' : run && mine && run.txs[s] ? 'done' : 'todo'
+    // A finished run never locks the page. The visitor who ran it keeps seeing their completed steps (with "Run again"
+    // below); everyone else gets a fresh first step.
+    if (inactive) {
+      if (run && mine && run.txs.start) return run.txs[s] ? 'done' : 'todo'
+      return s === 'start' ? 'next' : 'todo'
+    }
     if (run && run.txs[s]) return 'done'
     return next === s ? 'next' : 'todo'
   }
@@ -159,6 +162,19 @@ export function DemoScreen() {
                 : run?.phase === 'expired'
                   ? 'The refund window closed before it was used. The money is the merchant\u2019s now. Start again.'
                   : 'That run ended without a refund. Start again.'}
+              {mine && (
+                <button
+                  type="button"
+                  className="btn btn-line btn-xs ml-3"
+                  onClick={() => {
+                    saveRunAuth(null)
+                    setAuth(null)
+                    setEvents({})
+                  }}
+                >
+                  Run again
+                </button>
+              )}
             </p>
           )}
         </div>

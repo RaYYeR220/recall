@@ -23,6 +23,13 @@ Northwind Gym (creditor #1) holds a 0.10 EURC reserve. The payer signed a mandat
 - Prod rail: collection pre-notified, due 2026-10-29T11:57:01.000Z — [0x5cf86545…](https://explorer.arc.io/tx/0x5cf865455e2a0db04f3587c2f9084d7706f48d933f8f4721aa364894dab6e435)
 - Prod rail: collected — the payer can take it back until 2026-12-24T12:07:24.000Z — [0x182a652b…](https://explorer.arc.io/tx/0x182a652b27b35eb379afff750cbc3c2112f88e81368a27f0190368b031a18695)
 
+## Through the app, in USDC
+
+Two complete runs of the one-click demo at [recall-debit.vercel.app/demo](https://recall-debit.vercel.app/demo), clicked by a person in the browser. Each moves 0.02 USDC through the contract and back.
+
+- **Run A:** mandate signed by the payer, activated without gas — [0x7dbb6c3f…](https://explorer.arc.io/tx/0x7dbb6c3f66506950304dc0e966a68a836ddc3b2d0c4a00cba6433e7c9e95ff60); 0.02 USDC debit pre-notified — [0x747e822d…](https://explorer.arc.io/tx/0x747e822d650f90800f9ccf6fb7addcfe37b7fede2e582e274610fa64a1575af1); collected: 0.02 USDC payer → rail → merchant (sent through the Arc Memo contract) — [0x8606d49b…](https://explorer.arc.io/tx/0x8606d49b34b97f24853a063bdca4c9ec27ff5d09d6e606b40c4db52f7e5f35fe); refunded in one click: 0.02 USDC back to the payer (MD06) — [0xaa1b5828…](https://explorer.arc.io/tx/0xaa1b582877dbd98a2dfe33058fc173f8a86e9e774f232bc5893410526ac789b0)
+- **Run B:** mandate signed by the payer, activated without gas — [0x35f420b7…](https://explorer.arc.io/tx/0x35f420b784d12c63cac34128b7145b840ea5ea4d6b1fb4756265bb610e36c9e9); 0.02 USDC debit pre-notified — [0xf60d965d…](https://explorer.arc.io/tx/0xf60d965dbe5d77806da36f3fb5f16f5f411b321134932db266cbf05c04a1f7e2); collected: 0.02 USDC payer → rail → merchant (sent through the Arc Memo contract) — [0x3798ef57…](https://explorer.arc.io/tx/0x3798ef571dfc52669ab61567c3a7e2b7e3d5c772c7866685200ec3202373f261); refunded in one click: 0.02 USDC back to the payer (MD06) — [0xc7e55718…](https://explorer.arc.io/tx/0xc7e55718cad74aa6c5b0a9fd34ed502939bfca891a72392ee1afba2da3212b1a)
+
 ## The full lifecycle on the demo rail
 
 Same bytecode, compressed time, real EURC and USDC.

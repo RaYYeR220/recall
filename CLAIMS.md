@@ -16,6 +16,7 @@ Every public statement about Recall, tagged by how you can check it.
 | Every refundable cent is backed (I1–I3) | VERIFIED-LIVE + REPRODUCIBLE | `RailLens.health()` on [/proof](https://recall-debit.vercel.app/proof); invariant suite in `contracts/test/invariant` |
 | A refund always returns exactly the collected amount, inside the window, at any moment (I4, I6) | REPRODUCIBLE | invariant and fuzz tests |
 | Payer-side failures return a collection with a reason code instead of reverting | REPRODUCIBLE + VERIFIED-LIVE | `test_collect_insufficientBalance_returnsAM04`; the AM04 transaction in the lifecycle runs |
+| Real USDC moves through the contract from the app itself (one-click demo, clicked in a browser) | VERIFIED-LIVE | two complete app runs in [PROOF.md › Through the app](PROOF.md#through-the-app-in-usdc) |
 | The payer never needs gas | VERIFIED-LIVE | relayed `activateMandateWithPermit` and `executeDebtorAction` transactions in PROOF.md |
 | EOAs, EIP-7702-delegated EOAs and ERC-1271 wallets can all sign | REPRODUCIBLE | signature tests in `contracts/test` |
 | A demo-rail signature can't be used on the prod rail | VERIFIED-LIVE | the `BadSignature` refusal in PROOF.md |
