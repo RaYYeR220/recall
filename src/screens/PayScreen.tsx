@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getAddress, isAddress, type Hex } from 'viem'
 import { MandateStatus, RAIL_INSTANCES, type RailInstance } from '@recall/sdk'
@@ -23,11 +23,15 @@ const DEFAULT_LABEL: Record<RailInstance, string> = { prod: 'Prod rail', demo: '
 
 /** /pay — the payer's page. Leads with the next refundable debit, everything else is read from RailLens. */
 export function PayScreen() {
-  const { network } = useNetwork()
+  const { network, setNetwork } = useNetwork()
   const wallet = useWallet()
   const [params, setParams] = useSearchParams()
-  const instance: RailInstance = params.get('i') === 'demo' ? 'demo' : 'prod'
-  const asRaw = params.get('as')
+  // Deep links: ?watch=<address>&rail=prod|demo opens a read-only view. The older ?as= and ?i= still work.
+  const instance: RailInstance = (params.get('rail') ?? params.get('i')) === 'demo' ? 'demo' : 'prod'
+  const asRaw = params.get('watch') ?? params.get('as')
+  const focusRaw = params.get('refund')
+  const focusId = focusRaw && /^0x[0-9a-fA-F]{64}$/.test(focusRaw) ? focusRaw.toLowerCase() : undefined
+  const linkNetwork = params.get('network')
   const viewAs = asRaw && isAddress(asRaw, { strict: false }) ? getAddress(asRaw) : undefined
   const subject = viewAs ?? wallet.address
   const watching = !!viewAs && viewAs.toLowerCase() !== wallet.address?.toLowerCase()
@@ -50,10 +54,26 @@ export function PayScreen() {
 
   const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params)
+    if (key === 'rail') next.delete('i')
+    if (key === 'watch') next.delete('as')
     if (value === null) next.delete(key)
     else next.set(key, value)
     setParams(next, { replace: true })
   }
+
+  // A link made for the other network (for example from an assistant) switches to it once.
+  useEffect(() => {
+    if (linkNetwork !== 'arc' && linkNetwork !== 'arc-testnet') return
+    if (linkNetwork !== network) setNetwork(linkNetwork)
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p)
+        next.delete('network')
+        return next
+      },
+      { replace: true },
+    )
+  }, [linkNetwork, network, setNetwork, setParams])
 
   const w: Windows | undefined = windows.data
   const loading = !!subject && (mandates.isLoading || windows.isLoading || !ready || names.isLoading)
@@ -92,7 +112,8 @@ export function PayScreen() {
     refundable.sort((a, b) => refundDeadlineOf(a, w) - refundDeadlineOf(b, w))
     history.sort((a, b) => momentOf(b) - momentOf(a))
   }
-  const feature = refundable[0] ?? upcoming[0] ?? history[0]
+  const focused = focusId ? items.find((it) => it.collectionId.toLowerCase() === focusId) : undefined
+  const feature = focused ?? refundable[0] ?? upcoming[0] ?? history[0]
 
   const mandateRows: MandateRowModel[] = views.map((v) => {
     const li = activeIds.indexOf(v.id)
@@ -122,7 +143,7 @@ export function PayScreen() {
           {demo && <DemoPill />}
           <div className="seg" role="group" aria-label="Rail">
             {RAIL_INSTANCES.map((i) => (
-              <button key={i} type="button" aria-pressed={i === instance} onClick={() => setParam('i', i === 'prod' ? null : i)}>
+              <button key={i} type="button" aria-pressed={i === instance} onClick={() => setParam('rail', i === 'prod' ? null : i)}>
                 {DEFAULT_LABEL[i]}
               </button>
             ))}
@@ -135,9 +156,19 @@ export function PayScreen() {
           <span>
             Watching <span className="mono text-ink">{shortAddress(viewAs)}</span>, read-only.
           </span>
-          <button type="button" className="btn-text" onClick={() => setParam('as', null)}>
+          <button type="button" className="btn-text" onClick={() => setParam('watch', null)}>
             Stop watching
           </button>
+        </div>
+      )}
+
+      {focusId && (
+        <div className="mt-5 rounded-panel border border-line-2 px-4 py-3 text-[13px] leading-snug text-ink-2" role="status">
+          {focused
+            ? 'An assistant prepared a refund for the debit below. Nothing has been signed: connect your wallet and press Take it back if you want it.'
+            : subject
+              ? 'The debit your assistant prepared a refund for is not in this view. Check the rail and the wallet.'
+              : 'An assistant prepared a refund for you. Connect your wallet to see the debit and sign it yourself.'}
         </div>
       )}
 
@@ -155,7 +186,7 @@ export function PayScreen() {
         {notDeployed ? (
           <NotDeployed network={network} instance={instance} />
         ) : !subject ? (
-          <ConnectState onWatch={(a) => setParam('as', getAddress(a))} />
+          <ConnectState onWatch={(a) => setParam('watch', getAddress(a))} />
         ) : failed ? (
           <div className="mx-auto max-w-xl">
             <ErrorPanel
@@ -203,7 +234,7 @@ export function PayScreen() {
                   <Link className="btn btn-light btn-sm" to="/demo">
                     Run a live debit
                   </Link>
-                  <button type="button" className="btn btn-line btn-sm" onClick={() => setParam('i', demo ? null : 'demo')}>
+                  <button type="button" className="btn btn-line btn-sm" onClick={() => setParam('rail', demo ? null : 'demo')}>
                     Look on the {demo ? 'prod' : 'demo'} rail
                   </button>
                 </div>

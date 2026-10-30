@@ -12,7 +12,7 @@ import { useMerchantCtx } from './ctx'
 /** Operators may sign offers, pre-notify and cancel. They cannot touch the reserve or the payout address. */
 export function Operators() {
   const { network } = useNetwork()
-  const { instance, creditor, isOwner, gate } = useMerchantCtx()
+  const { instance, creditor, isOwner, gate, readOnly } = useMerchantCtx()
   const rail = useRail(instance)
   const qc = useQueryClient()
   const ops = useOperators(network, instance, creditor.id)
@@ -79,7 +79,7 @@ export function Operators() {
           </button>
         </form>
       ) : (
-        <p className="mt-4 text-[12.5px] text-ink-3">Only the owner can add or remove operators.</p>
+        <p className="mt-4 text-[12.5px] text-ink-3">{readOnly ? 'Read-only view. Only the owner can add or remove operators.' : 'Only the owner can add or remove operators.'}</p>
       )}
     </section>
   )

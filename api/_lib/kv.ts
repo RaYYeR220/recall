@@ -10,8 +10,13 @@ export interface Kv {
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;
   /** Sets only when the key is absent. Resolves true when this call took it. */
   setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean>;
-  /** Adds one and returns the new count. The first increment arms the expiry. */
+  /**
+   * Atomically adds one and returns the new count. The first increment arms the expiry. Concurrent callers
+   * always see distinct, consecutive values, so a cap can safely be "reject when the result exceeds it".
+   */
   incr(key: string, ttlSeconds: number): Promise<number>;
+  /** Atomically subtracts one and returns the new count (gives a slot back). */
+  decr(key: string): Promise<number>;
   del(key: string): Promise<void>;
 }
 
@@ -48,6 +53,12 @@ export function memoryKv(now: () => number = Date.now): Kv {
       store.set(key, { value: String(n), expiresAt: e ? e.expiresAt : expiry(ttl) });
       return Promise.resolve(n);
     },
+    decr(key) {
+      const e = live(key);
+      const n = (e ? Number(e.value) : 0) - 1;
+      store.set(key, { value: String(n), expiresAt: e ? e.expiresAt : Number.POSITIVE_INFINITY });
+      return Promise.resolve(n);
+    },
     del(key) {
       store.delete(key);
       return Promise.resolve();
@@ -57,8 +68,24 @@ export function memoryKv(now: () => number = Date.now): Kv {
 
 /** Upstash / Vercel KV over REST: each call is one command array POSTed to the base URL. */
 export function restKv(baseUrl: string, token: string, fetchImpl: typeof fetch = fetch): Kv {
-  const cmd = async (...args: (string | number)[]): Promise<unknown> => {
-    const res = await fetchImpl(baseUrl, {
+  const base = baseUrl.replace(/\/+$/, "");
+  type Command = (string | number)[];
+  /** Several commands in one round trip. The server runs them back to back, so INCR + EXPIRE cannot be split. */
+  const pipeline = async (commands: Command[]): Promise<unknown[]> => {
+    const res = await fetchImpl(`${base}/pipeline`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(commands),
+    });
+    if (!res.ok) throw new Error(`KV answered ${res.status}`);
+    const json = (await res.json()) as { result?: unknown; error?: string }[];
+    return json.map((r) => {
+      if (r.error) throw new Error(`KV error: ${r.error}`);
+      return r.result;
+    });
+  };
+  const cmd = async (...args: Command): Promise<unknown> => {
+    const res = await fetchImpl(base, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify(args),
@@ -81,9 +108,15 @@ export function restKv(baseUrl: string, token: string, fetchImpl: typeof fetch =
       return (await cmd("SET", key, value, "EX", ttl, "NX")) === "OK";
     },
     async incr(key, ttl) {
-      const n = Number(await cmd("INCR", key));
-      if (n === 1) await cmd("EXPIRE", key, ttl);
-      return n;
+      // One pipeline: INCR plus EXPIRE ... NX (only arms the expiry on a key that has none).
+      const [n] = await pipeline([
+        ["INCR", key],
+        ["EXPIRE", key, ttl, "NX"],
+      ]);
+      return Number(n);
+    },
+    async decr(key) {
+      return Number(await cmd("DECR", key));
     },
     async del(key) {
       await cmd("DEL", key);

@@ -1,4 +1,6 @@
 export type DemoStepName = 'start' | 'prenotify' | 'collect' | 'refund'
+export type DemoAsset = 'USDC' | 'EURC'
+export const DEFAULT_DEMO_ASSET: DemoAsset = 'USDC'
 
 export interface DemoEvent {
   name: string
@@ -16,6 +18,8 @@ export interface PublicRun {
   id: string
   phase: 'started' | 'prenotified' | 'collected' | 'refunded' | 'expired' | 'failed'
   createdAt: number
+  /** The asset this run moves. Absent on runs saved before the toggle existed (EURC). */
+  asset?: DemoAsset
   mandateId?: string
   collectionId?: string
   dueAt?: number
@@ -43,6 +47,8 @@ export interface DemoStatus {
   missing?: string[]
   ready: boolean
   problems: string[]
+  defaultAsset?: DemoAsset
+  assets?: Record<DemoAsset, { ready: boolean; problems: string[] }>
   windows?: { refundWindow: number; minPrenotice: number }
   houseCreditor?: string
   housePayer?: string
@@ -115,8 +121,8 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Pr
 
 export const demoApi = {
   status: () => call<DemoStatus>('GET', '/api/demo/status'),
-  step: (step: DemoStepName, auth?: { runId: string; token: string }) =>
-    call<StepReply>('POST', `/api/demo/${step}`, auth ? { runId: auth.runId, token: auth.token } : {}),
+  step: (step: DemoStepName, auth?: { runId: string; token: string }, asset?: DemoAsset) =>
+    call<StepReply>('POST', `/api/demo/${step}`, auth ? { runId: auth.runId, token: auth.token } : step === 'start' ? { asset: asset ?? DEFAULT_DEMO_ASSET } : {}),
   provoke: (c: string) => call<ProvokeReply>('POST', '/api/demo/provoke', { case: c }),
 }
 

@@ -87,7 +87,7 @@ function Meter({ cov, symbol }: { cov: Cov; symbol: TokenSymbol }) {
 
 function TokenCard({ symbol, cov }: { symbol: TokenSymbol; cov: Cov }) {
   const { network } = useNetwork()
-  const { instance, creditor, wallet, isOwner, gate } = useMerchantCtx()
+  const { instance, creditor, wallet, isOwner, gate, readOnly } = useMerchantCtx()
   const rail = useRail(instance)
   const qc = useQueryClient()
   const figures = useWalletFigures(network, wallet)
@@ -184,7 +184,7 @@ function TokenCard({ symbol, cov }: { symbol: TokenSymbol; cov: Cov }) {
               {busy === 'fund' ? 'Working…' : 'Fund'}
             </button>
           </div>
-          <p className="mono mt-1.5 text-[11.5px] text-ink-3">your balance {balance === undefined ? '…' : formatAmountPlain(balance)}</p>
+          {!readOnly && <p className="mono mt-1.5 text-[11.5px] text-ink-3">your balance {balance === undefined ? '…' : formatAmountPlain(balance)}</p>}
         </form>
 
         <form

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../../node_modules/.tmp/tsconfig.api-test.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["./**/*.ts", "../_lib/**/*.ts"],
+  "exclude": []
+}

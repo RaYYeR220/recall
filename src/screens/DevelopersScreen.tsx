@@ -1,9 +1,9 @@
 import { formatAbiItem } from 'viem/utils'
 import { debitRailAbi, RETURN_CODE_LABELS, railAddresses, RAIL_INSTANCES, RAIL_NETWORKS, networkInfo, addressUrl } from '@recall/sdk'
-import { Chip, DemoPill, ExtLink } from '@/components/ui'
+import { DemoPill, ExtLink } from '@/components/ui'
 import { Reveal } from '@/components/Reveal'
 import { shortAddress } from '@/lib/format'
-import { CLIENT, ERRORS, INSTALL, LINK, MCP_TOOLS, PRENOTIFY, REFUND } from './developers/snippets'
+import { CLIENT, ERRORS, INSTALL, LINK, MCP_CONFIG, MCP_INSTALL, MCP_MERCHANT_TOOLS, MCP_PAYER_TOOLS, PRENOTIFY, REFUND, type McpTool } from './developers/snippets'
 
 function Code({ children, label }: { children: string; label: string }) {
   return (
@@ -14,6 +14,24 @@ function Code({ children, label }: { children: string; label: string }) {
     >
       <code>{children}</code>
     </pre>
+  )
+}
+
+function McpGroup({ title, note, tools }: { title: string; note: string; tools: McpTool[] }) {
+  return (
+    <div className="panel p-5 sm:p-6">
+      <h3 className="text-[16px] font-medium tracking-tight">{title}</h3>
+      <p className="mt-1.5 text-[13px] leading-snug text-ink-3">{note}</p>
+      <ul className="mt-3 divide-y divide-line">
+        {tools.map((t) => (
+          <li key={t.name} className="py-3">
+            <code className="mono text-[12.5px] text-ink">{t.name}</code>
+            <div className="mono mt-0.5 text-[11.5px] text-ink-3">{`{ ${t.input} }`}</div>
+            <p className="mt-1 text-[13px] leading-snug text-ink-2">{t.does}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -151,18 +169,28 @@ export function DevelopersScreen() {
       </Section>
 
       <Section id="mcp" title="MCP tools" lede="So an agent can bill within a mandate while the person keeps the refund right.">
-        <div className="panel p-5 sm:p-6">
-          <Chip tone="quiet" mono>
-            planned, not shipped yet
-          </Chip>
-          <ul className="mt-3 divide-y divide-line">
-            {MCP_TOOLS.map((t) => (
-              <li key={t.name} className="grid gap-1 py-3 sm:grid-cols-[17rem_1fr] sm:gap-6">
-                <code className="mono text-[12.5px] text-ink">{t.name}</code>
-                <span className="text-[13.5px] text-ink-2">{t.does}</span>
-              </li>
-            ))}
-          </ul>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <McpGroup
+            title="Merchant agent"
+            note="Acts as an operator wallet the creditor owner added. It can only pre-notify, collect and cancel inside signed mandates, and can never touch the reserve or the payout. Sending needs RECALL_OPERATOR_KEY."
+            tools={MCP_MERCHANT_TOOLS}
+          />
+          <McpGroup
+            title="Payer assistant"
+            note="Read-only. The payer\u2019s key is never given to the server. It prepares a refund and links to /pay, where the person signs."
+            tools={MCP_PAYER_TOOLS}
+          />
+        </div>
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div>
+            <Code label="Claude Desktop or Cursor config">{MCP_CONFIG}</Code>
+          </div>
+          <div>
+            <Code label="Install">{MCP_INSTALL}</Code>
+            <p className="mt-3 text-[13px] leading-snug text-ink-3">
+              Runs on Arc mainnet by default; set <span className="mono">NETWORK=arc-testnet</span> for testnet. Full setup in <span className="mono">packages/mcp/README.md</span>.
+            </p>
+          </div>
         </div>
       </Section>
 

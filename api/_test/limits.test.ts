@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { memoryKv, restKv } from "../_lib/kv";
+import { memoryKv, restKv, type Kv } from "../_lib/kv.js";
 import {
   acquireDemoLock,
   dayKey,
@@ -10,7 +10,7 @@ import {
   takeDaily,
   takeDemoRun,
   takeRelaySlot,
-} from "../_lib/limits";
+} from "../_lib/limits.js";
 
 const T0 = Date.UTC(2026, 9, 29, 10, 0, 0); // 29 Oct 2026, 10:00 UTC
 
@@ -133,20 +133,98 @@ describe("demo caps and lock", () => {
 });
 
 describe("REST-backed store", () => {
-  test("speaks the Upstash REST protocol", async () => {
-    const calls: unknown[][] = [];
-    const answers: Record<string, unknown> = { INCR: 1, SET: "OK", GET: "7", EXPIRE: 1, DEL: 1 };
-    const fetchMock = ((_url: string, init: RequestInit) => {
-      const cmd = JSON.parse(init.body as string) as unknown[];
-      calls.push(cmd);
+  test("speaks the Upstash REST protocol, and INCR + EXPIRE travel in one pipeline request", async () => {
+    const requests: { url: string; body: unknown }[] = [];
+    const fetchMock = ((url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as unknown[];
+      requests.push({ url, body });
       expect((init.headers as Record<string, string>)["authorization"]).toBe("Bearer tok");
-      return Promise.resolve(Response.json({ result: answers[String(cmd[0])] }));
+      if (url.endsWith("/pipeline")) return Promise.resolve(Response.json([{ result: 7 }, { result: 1 }]));
+      const answers: Record<string, unknown> = { SET: "OK", GET: "7", DECR: 6, DEL: 1 };
+      return Promise.resolve(Response.json({ result: answers[String(body[0])] }));
     }) as unknown as typeof fetch;
-    const kv = restKv("https://kv.example", "tok", fetchMock);
-    expect(await kv.incr("k", 60)).toBe(1);
-    expect(calls.map((c) => c[0])).toEqual(["INCR", "EXPIRE"]);
+    const kv = restKv("https://kv.example/", "tok", fetchMock);
+
+    expect(await kv.incr("k", 60)).toBe(7);
+    expect(requests).toHaveLength(1); // a single round trip, so the count and its expiry cannot be split
+    expect(requests[0]?.url).toBe("https://kv.example/pipeline");
+    expect(requests[0]?.body).toEqual([
+      ["INCR", "k"],
+      ["EXPIRE", "k", 60, "NX"],
+    ]);
+
+    expect(await kv.decr("k")).toBe(6);
+    expect(requests[1]?.body).toEqual(["DECR", "k"]);
     expect(await kv.get("k")).toBe("7");
     expect(await kv.setIfAbsent("l", "v", 30)).toBe(true);
-    expect(calls[calls.length - 1]).toEqual(["SET", "l", "v", "EX", 30, "NX"]);
+    expect(requests[requests.length - 1]?.body).toEqual(["SET", "l", "v", "EX", 30, "NX"]);
+  });
+
+  test("a pipeline error surfaces instead of being counted as a pass", async () => {
+    const fetchMock = (() => Promise.resolve(Response.json([{ error: "WRONGTYPE" }, { result: 0 }]))) as unknown as typeof fetch;
+    const kv = restKv("https://kv.example", "tok", fetchMock);
+    let message = "";
+    try {
+      await kv.incr("k", 60);
+    } catch (e) {
+      message = e instanceof Error ? e.message : "";
+    }
+    expect(message).toContain("WRONGTYPE");
+  });
+});
+
+/** A store whose every call yields to the event loop first, so concurrent callers interleave as they would across instances. */
+function jitteryKv(inner: Kv): Kv {
+  const tick = () => new Promise<void>((r) => setTimeout(r, Math.floor(Math.random() * 3)));
+  return {
+    get: async (k) => (await tick(), inner.get(k)),
+    set: async (k, v, t) => (await tick(), inner.set(k, v, t)),
+    setIfAbsent: async (k, v, t) => (await tick(), inner.setIfAbsent(k, v, t)),
+    incr: async (k, t) => (await tick(), inner.incr(k, t)),
+    decr: async (k) => (await tick(), inner.decr(k)),
+    del: async (k) => (await tick(), inner.del(k)),
+  };
+}
+
+describe("caps hold under concurrency", () => {
+  test("memory incr hands out distinct consecutive values", async () => {
+    const kv = memoryKv(() => T0);
+    const values = await Promise.all(Array.from({ length: 50 }, () => kv.incr("c", 60)));
+    expect([...values].sort((a, b) => a - b)).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
+  });
+
+  test("100 simultaneous relay requests from one IP: exactly 20 pass", async () => {
+    const kv = jitteryKv(memoryKv(() => T0));
+    const results = await Promise.all(Array.from({ length: 100 }, () => takeRelaySlot(kv, "1.2.3.4", T0)));
+    expect(results.filter((r) => r.ok)).toHaveLength(20);
+    expect(results.filter((r) => !r.ok && r.reason === "ip")).toHaveLength(80);
+  });
+
+  test("the global cap of 200 holds across many IPs at once", async () => {
+    const kv = jitteryKv(memoryKv(() => T0));
+    const results = await Promise.all(Array.from({ length: 300 }, (_, i) => takeRelaySlot(kv, `10.0.${Math.floor(i / 15)}.${i % 15}`, T0)));
+    expect(results.filter((r) => r.ok)).toHaveLength(200);
+    expect(results.filter((r) => !r.ok && r.reason === "global")).toHaveLength(100);
+  });
+
+  test("an IP that hits its cap hands its global slot back, so others still fit", async () => {
+    const kv = jitteryKv(memoryKv(() => T0));
+    const noisy = await Promise.all(Array.from({ length: 30 }, () => takeRelaySlot(kv, "9.9.9.9", T0)));
+    expect(noisy.filter((r) => r.ok)).toHaveLength(20);
+    // 20 used; the 10 refused ones were given back. 180 global slots remain.
+    const others = await Promise.all(Array.from({ length: 200 }, (_, i) => takeRelaySlot(kv, `8.8.${Math.floor(i / 15)}.${i % 15}`, T0)));
+    expect(others.filter((r) => r.ok)).toHaveLength(180);
+  });
+
+  test("the demo run cap of 40 holds under concurrency", async () => {
+    const kv = jitteryKv(memoryKv(() => T0));
+    const results = await Promise.all(Array.from({ length: 80 }, () => takeDemoRun(kv, T0)));
+    expect(results.filter((r) => r.ok)).toHaveLength(DEMO_RUNS_PER_DAY);
+  });
+
+  test("only one of many simultaneous demo starts takes the lock", async () => {
+    const kv = jitteryKv(memoryKv(() => T0));
+    const results = await Promise.all(Array.from({ length: 25 }, (_, i) => acquireDemoLock(kv, `run-${i}`, T0)));
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
   });
 });

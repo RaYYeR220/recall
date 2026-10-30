@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { RAIL_INSTANCES, type RailInstance } from '@recall/sdk'
 import { ConnectButton } from '@/components/ConnectButton'
 import { Chip, DemoPill, ErrorPanel, Skeleton } from '@/components/ui'
@@ -13,6 +14,7 @@ import { Mandates } from './merchant/Mandates'
 import { Offers } from './merchant/Offers'
 import { Operators } from './merchant/Operators'
 import { Register } from './merchant/Register'
+import { MerchantWatch } from './merchant/Watch'
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <main className="mx-auto w-full max-w-app px-4 pb-8 pt-10 sm:px-8 sm:pt-16">{children}</main>
@@ -25,8 +27,14 @@ export function MerchantScreen() {
   const [instance, setInstance] = useState<RailInstance>('prod')
   const [picked, setPicked] = useState<bigint | null>(null)
   const creditors = useCreditors(network, instance, w.address)
+  // ?watch=<creditorId>&rail=prod|demo: a read-only view that needs no wallet.
+  const [params] = useSearchParams()
+  const watchRaw = params.get('watch')
+  const watchId = watchRaw && /^\d{1,18}$/.test(watchRaw) && BigInt(watchRaw) > 0n ? BigInt(watchRaw) : undefined
 
   const gate = !w.isConnected ? 'Connect your wallet first.' : w.wrongChain ? `Switch your wallet to ${info.chain.name} first.` : undefined
+
+  if (watchId !== undefined) return <MerchantWatch id={watchId} instance={params.get('rail') === 'demo' ? 'demo' : 'prod'} />
 
   const header = (
     <div className="max-w-2xl">

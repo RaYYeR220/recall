@@ -9,7 +9,7 @@
     "compass:deploy": "bun run ./scripts/compass-deploy.ts",
     "fetch:abi": "bun run ./scripts/fetch-abi.ts",
     "lint": "oxlint --type-aware src scripts packages api --fix; s=$?; oxlint --fix .; exit $((s>0?s:$?))",
-    "typecheck": "tsc --noEmit; a=$?; tsc --noEmit -p packages/sdk/tsconfig.json; b=$?; tsc --noEmit -p api/tsconfig.json; c=$?; exit $((a>b?(a>c?a:c):(b>c?b:c)))",
+    "typecheck": "tsc --noEmit; a=$?; tsc --noEmit -p packages/sdk/tsconfig.json; b=$?; tsc --noEmit -p api/tsconfig.json; c=$?; tsc --noEmit -p api/_test/tsconfig.json; d=$?; tsc --noEmit -p packages/mcp/tsconfig.json; e=$?; m=0; for x in $a $b $c $d $e; do [ $x -gt $m ] && m=$x; done; exit $m",
     "check": "bash scripts/check.sh",
     "contracts:build": "forge build",
     "contracts:test": "forge test",
@@ -18,7 +18,8 @@
     "verify:onchain": "bun run ./scripts/verify-onchain.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "api:test": "cd api && bun test"
+    "api:test": "cd api && bun test",
+    "mcp:test": "cd packages/mcp && bun test"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.19.2",

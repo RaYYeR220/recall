@@ -4,13 +4,15 @@ import {
   canRun,
   countdowns,
   isActive,
+  DEMO_DEFAULT_ASSET,
   isFinished,
   nextStep,
+  parseAsset,
   refundWindowClosed,
   RUN_STALE_SECONDS,
   settleExpiry,
   type DemoRun,
-} from "../_lib/demo-machine";
+} from "../_lib/demo-machine.js";
 
 const H = (n: string) => `0x${n.repeat(32)}` as const;
 const T = 1_800_000_000;
@@ -139,5 +141,19 @@ describe("countdowns", () => {
 
   test("no run, no clocks", () => {
     expect(countdowns(null, T)).toEqual({ noticeLeft: null, refundLeft: null });
+  });
+});
+
+describe("asset choice", () => {
+  test("USDC is the default and EURC is opt-in", () => {
+    expect(parseAsset(undefined)).toBe("USDC");
+    expect(parseAsset(null)).toBe("USDC");
+    expect(parseAsset("")).toBe("USDC");
+    expect(parseAsset("USDC")).toBe("USDC");
+    expect(parseAsset("EURC")).toBe("EURC");
+    expect(DEMO_DEFAULT_ASSET).toBe("USDC");
+  });
+  test("anything else is refused rather than guessed", () => {
+    for (const bad of ["usdc", "DAI", 5, {}, [], true]) expect(parseAsset(bad)).toBeNull();
   });
 });

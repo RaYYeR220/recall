@@ -14,7 +14,7 @@ export interface StepMeta {
 
 export const STEPS: StepMeta[] = [
   { step: 'start', n: 1, title: 'Sign the mandate', blurb: 'The payer signs once. A relayer submits it, so the payer pays no gas.', cta: 'Sign and activate' },
-  { step: 'prenotify', n: 2, title: 'Pre-notify', blurb: 'The merchant announces 0.02 EURC and a due date, after the notice period.', cta: 'Announce the debit' },
+  { step: 'prenotify', n: 2, title: 'Pre-notify', blurb: 'The merchant announces a 0.02 debit and a due date, after the notice period.', cta: 'Announce the debit' },
   { step: 'collect', n: 3, title: 'Collect', blurb: 'Once it is due, anyone can run the collection. The merchant is paid at once.', cta: 'Collect' },
   { step: 'refund', n: 4, title: 'Take it back', blurb: 'The payer signs a refund inside the window. The money returns in full.', cta: 'Refund' },
 ]

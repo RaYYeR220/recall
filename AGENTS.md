@@ -88,7 +88,15 @@ Requires: `CREDITOR_KEY`, `DEBTOR_KEY`, `RELAYER_KEY`, `DEBTOR2_KEY`, `EURC_ADDR
 ## Part 2 (merchant console, proof, demo, developers, functions)
 
 - Routes: `/merchant` (src/screens/MerchantScreen.tsx + merchant/*), `/proof`, `/demo`, `/developers`. Everything reads the chain; no mock data.
-- Functions in `api/` (see `api/README.md` for routes and env). Shared logic in `api/_lib`; tests in `api/test` (`bun run api:test`). `vercel.json` rewrites the SPA and sets the function duration.
+- Functions in `api/` (see `api/README.md` for routes and env). Shared logic in `api/_lib`; tests in `api/_test` (`bun run api:test`). `vercel.json` rewrites the SPA and sets the function duration.
 - The demo's "Try to break it" is simulation only. A case is `live` (simulated now), `replayed` (the exact recorded mainnet calldata run against current state) or `recorded`; the response says which and whether the expected error was reproduced.
 - Creditor discovery and statements scan logs with `scanWindows` (9,000-block windows from the deployment block, never block 0).
 - Merchant text must come from `mandateTextForOffer`; the offer form already does.
+
+## Agent surface and deploy conventions
+
+- `packages/mcp`: stdio MCP server (merchant agent tools with `RECALL_OPERATOR_KEY`, read-only payer-assistant tools). `bun run mcp:test`. See `packages/mcp/README.md` for the Claude Desktop / Cursor config. The payer tools take a `ReadContext` with no wallet; `prepare_refund` only returns typed data and a `/pay?rail=&refund=` link.
+- Vercel runs `api/**` and anything it imports as native Node ESM: relative imports end in `.js`, the SDK is imported by relative path, JSON imports use `with { type: "json" }`. Applies to `api/**`, `packages/sdk/src/**` and `packages/mcp/src/**`.
+- API tests live in `api/_test` (underscore folders are not deployed). `vercel.json` has a daily cron for `/api/keeper`.
+- Deep links: `/pay?watch=<address>&rail=prod|demo` (read-only), `/pay?rail=&refund=<collectionId>[&network=]` (highlights a prepared refund), `/merchant?watch=<creditorId>&rail=prod|demo` (read-only, no wallet).
+- The demo runs in USDC by default; `{ asset: "EURC" }` on `start` switches. The run records its asset.

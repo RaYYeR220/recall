@@ -19,6 +19,9 @@ import {
   canRun,
   countdowns,
   DEMO_AMOUNT,
+  DEMO_DEFAULT_ASSET,
+  parseAsset,
+  type DemoAsset,
   isActive,
   isFinished,
   nextStep,
@@ -112,7 +115,7 @@ export async function houseCreditorId(ctx: DemoContext): Promise<bigint | null> 
   return id ?? null;
 }
 
-async function readiness(ctx: DemoContext, creditorId: bigint | null): Promise<string[]> {
+async function readiness(ctx: DemoContext, creditorId: bigint | null, asset: DemoAsset): Promise<string[]> {
   const pc = publicClientFor(ctx.network);
   const info = networkInfo(ctx.network);
   const problems: string[] = [];
@@ -120,16 +123,18 @@ async function readiness(ctx: DemoContext, creditorId: bigint | null): Promise<s
     problems.push("The demo creditor key is not registered as a creditor on the demo rail.");
     return problems;
   }
+  const token = asset === "USDC" ? info.usdc.address : info.eurc.address;
   const rail = railFor(ctx.network, "demo");
   const [cov, debtorBal, relayerGas, creditorGas] = await Promise.all([
     rail.coverage(creditorId),
-    pc.readContract({ address: info.eurc.address, abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "a", type: "address" }], outputs: [{ type: "uint256" }] }] as const, functionName: "balanceOf", args: [ctx.debtor.address] }),
+    pc.readContract({ address: token, abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "a", type: "address" }], outputs: [{ type: "uint256" }] }] as const, functionName: "balanceOf", args: [ctx.debtor.address] }),
     pc.getBalance({ address: ctx.relayer.address }),
     pc.getBalance({ address: ctx.creditor.address }),
   ]);
-  const free = cov.eurc.reserveTotal - cov.eurc.reserveLocked;
-  if (free < DEMO_AMOUNT) problems.push("The demo creditor's free EURC reserve is below 0.02 EURC.");
-  if (debtorBal < DEMO_AMOUNT) problems.push("The demo payer holds less than 0.02 EURC.");
+  const c = asset === "USDC" ? cov.usdc : cov.eurc;
+  const free = c.reserveTotal - c.reserveLocked;
+  if (free < DEMO_AMOUNT) problems.push(`The demo creditor's free ${asset} reserve is below 0.02 ${asset}.`);
+  if (debtorBal < DEMO_AMOUNT) problems.push(`The demo payer holds less than 0.02 ${asset}.`);
   if (relayerGas === 0n) problems.push("The relayer wallet has no gas.");
   if (creditorGas === 0n) problems.push("The demo creditor wallet has no gas.");
   return problems;
@@ -145,7 +150,9 @@ function publicRun(run: DemoRun, network: RailNetwork) {
   return { ...rest, explorer: links };
 }
 
-export async function stepStart(ctx: DemoContext, kv: Kv, nowMs: number): Promise<Reply> {
+export async function stepStart(ctx: DemoContext, kv: Kv, nowMs: number, assetInput?: unknown): Promise<Reply> {
+  const asset = parseAsset(assetInput);
+  if (asset === null) return { status: 400, body: { error: "asset must be USDC or EURC.", code: "BadAsset" } };
   const network = ctx.network;
   const nowSec = await chainNow(network);
   const current = settleExpiry(await loadRun(kv), nowSec);
@@ -153,7 +160,7 @@ export async function stepStart(ctx: DemoContext, kv: Kv, nowMs: number): Promis
   if (!guard.ok) return fromGuard(guard);
 
   const creditorId = await houseCreditorId(ctx);
-  const problems = await readiness(ctx, creditorId);
+  const problems = await readiness(ctx, creditorId, asset);
   if (problems.length > 0 || creditorId === null) {
     return { status: 503, body: { error: "The live demo is not ready.", code: "NotReady", problems } };
   }
@@ -177,7 +184,7 @@ export async function stepStart(ctx: DemoContext, kv: Kv, nowMs: number): Promis
     const ts = BigInt(nowSec);
     const base: MandateOffer = {
       creditorId,
-      token: info.eurc.address,
+      token: asset === "USDC" ? info.usdc.address : info.eurc.address,
       scheme: Scheme.CORE,
       oneOff: false,
       maxPerCollection: 50_000n,
@@ -192,7 +199,7 @@ export async function stepStart(ctx: DemoContext, kv: Kv, nowMs: number): Promis
       debtor: ctx.debtor.address,
     };
     const name = (await publicClientFor(network).readContract({ address: railAddress(network, "demo").rail, abi: debitRailAbi, functionName: "getCreditor", args: [creditorId] })).name;
-    const terms = mandateTextForOffer(base, { creditorName: name, network, instance: "demo", rail: railAddress(network, "demo").rail, token: "EURC" });
+    const terms = mandateTextForOffer(base, { creditorName: name, network, instance: "demo", rail: railAddress(network, "demo").rail, token: asset });
     const offer: MandateOffer = { ...base, termsHash: termsHash(terms) };
 
     const offerSig = await creditorRail.signOffer(offer);
@@ -204,7 +211,7 @@ export async function stepStart(ctx: DemoContext, kv: Kv, nowMs: number): Promis
     const mandateId = await relayerRail.mandateId(offer, ctx.debtor.address);
 
     const token = crypto.randomUUID();
-    const run = { ...applyStep(null, "start", { mandateId, txHash: hash }, runId, nowSec), token };
+    const run = { ...applyStep(null, "start", { mandateId, txHash: hash }, runId, nowSec), asset, token };
     await saveRun(kv, run);
     return { status: 200, body: { step: "start", runId, runToken: token, tx, run: publicRun(run, network), runsToday: cap.runsToday, runsPerDay: DEMO_RUNS_PER_DAY } };
   } catch (e) {
@@ -249,10 +256,10 @@ export async function stepPrenotify(ctx: DemoContext, kv: Kv, input: { runId?: u
     const dueAt = nowSec + notice + 20;
     const e2eId = refToBytes32(`E2E-${run.id}`);
     const creditorRail = railFor(network, "demo", ctx.creditor);
-    const hash = await creditorRail.prenotify(run.mandateId as Hex, DEMO_AMOUNT, BigInt(dueAt), e2eId, `Recall demo ${run.id}: 0.02 EURC`);
+    const hash = await creditorRail.prenotify(run.mandateId as Hex, DEMO_AMOUNT, BigInt(dueAt), e2eId, `Recall demo ${run.id}: 0.02 ${run.asset ?? "EURC"}`);
     const tx = await toTxResult(network, "demo", hash);
     const collectionId = creditorRail.collectionId(run.mandateId as Hex, e2eId);
-    const next = { ...applyStep(run, "prenotify", { collectionId, e2eId, dueAt, txHash: hash }, run.id, nowSec), token: run.token };
+    const next = { ...applyStep(run, "prenotify", { collectionId, e2eId, dueAt, txHash: hash }, run.id, nowSec), asset: run.asset, token: run.token };
     await saveRun(kv, next);
     await touchDemoLock(kv, run.id);
     return { status: 200, body: { step: "prenotify", tx, run: publicRun(next, network), countdowns: countdowns(next, nowSec), noticeSeconds: notice } };
@@ -279,7 +286,7 @@ export async function stepCollect(ctx: DemoContext, kv: Kv, input: { runId?: unk
       return { status: 200, body: { step: "collect", tx, outcome: "not-settled", collectionStatus: col.status, run: publicRun(ended, network) } };
     }
     const w = await relayerRail.windows();
-    const next = { ...applyStep(run, "collect", { settledAt: Number(col.settledAt), refundWindow: Number(w.refundWindow), txHash: hash }, run.id, nowSec), token: run.token };
+    const next = { ...applyStep(run, "collect", { settledAt: Number(col.settledAt), refundWindow: Number(w.refundWindow), txHash: hash }, run.id, nowSec), asset: run.asset, token: run.token };
     await saveRun(kv, next);
     await touchDemoLock(kv, run.id);
     return { status: 200, body: { step: "collect", tx, outcome: "settled", run: publicRun(next, network), countdowns: countdowns(next, Number(col.settledAt)), refundWindow: Number(w.refundWindow) } };
@@ -336,7 +343,8 @@ export async function stepStatus(kv: Kv, nowMs: number): Promise<Reply> {
   if (!env.ok) return { status: 200, body: { ...base, configured: false, missing: env.missing, ready: false, problems: [] } };
 
   const creditorId = await houseCreditorId(env.ctx);
-  const problems = await readiness(env.ctx, creditorId);
+  const [usdcProblems, eurcProblems] = await Promise.all([readiness(env.ctx, creditorId, "USDC"), readiness(env.ctx, creditorId, "EURC")]);
+  const problems = usdcProblems;
   const w = await railFor(network, "demo").windows();
   return {
     status: 200,
@@ -345,6 +353,8 @@ export async function stepStatus(kv: Kv, nowMs: number): Promise<Reply> {
       configured: true,
       ready: problems.length === 0,
       problems,
+      defaultAsset: DEMO_DEFAULT_ASSET,
+      assets: { USDC: { ready: usdcProblems.length === 0, problems: usdcProblems }, EURC: { ready: eurcProblems.length === 0, problems: eurcProblems } },
       creditorId,
       houseCreditor: env.ctx.creditor.address,
       housePayer: env.ctx.debtor.address,

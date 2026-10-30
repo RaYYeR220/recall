@@ -79,8 +79,8 @@ async function attempt(c: ProvokeCase, kv: Kv, network: RailNetwork, recordedHas
     const creditorId = await houseCreditorId(ctx);
     if (creditorId === null) return fallback();
     const cov = await railFor(network, "demo").coverage(creditorId);
-    const free = cov.eurc.reserveTotal - cov.eurc.reserveLocked;
-    const data = encodeFunctionData({ abi: debitRailAbi, functionName: "withdrawReserve", args: [creditorId, networkInfo(network).eurc.address, free + 1n, ctx.creditor.address] });
+    const free = cov.usdc.reserveTotal - cov.usdc.reserveLocked;
+    const data = encodeFunctionData({ abi: debitRailAbi, functionName: "withdrawReserve", args: [creditorId, networkInfo(network).usdc.address, free + 1n, ctx.creditor.address] });
     const refusal = await expectRefusal(network, { account: ctx.creditor.address, to: rail, data });
     return { source: "live", refusal, note: `Simulated now: the house creditor asks for ${free + 1n} base units when only ${free} are free.` };
   }

@@ -59,11 +59,47 @@ try {
   // name: 'RefundWindowClosed', code: null, message: 'The 8-week refund window has closed.'
 }`
 
-export const MCP_TOOLS: { name: string; does: string }[] = [
-  { name: 'recall_create_checkout_link', does: 'Build and sign a mandate offer and return the checkout link.' },
-  { name: 'recall_list_mandates', does: 'A creditor\u2019s mandates with their newest collections.' },
-  { name: 'recall_prenotify', does: 'Announce a debit within an active mandate\u2019s limits.' },
-  { name: 'recall_collect', does: 'Collect a due debit.' },
-  { name: 'recall_status', does: 'The state of one collection, its refund deadline, and the reserve behind it.' },
-  { name: 'recall_export_camt054', does: 'ISO 20022 camt.054 or CSV of settled, refunded and returned collections.' },
+export interface McpTool {
+  name: string
+  input: string
+  does: string
+}
+
+export const MCP_MERCHANT_TOOLS: McpTool[] = [
+  { name: 'list_mandates', input: 'instance, creditorId, offset?, limit?', does: 'A creditor\u2019s mandates with their limits and recent collections.' },
+  {
+    name: 'prenotify_collection',
+    input: 'instance, mandateId, amount, dueAt, remittanceInfo',
+    does: 'Asks the rail first. If it would refuse (over the cap, notice too short, revoked...) returns the decoded refusal and sends nothing. Otherwise sends and returns the tx hash and collectionId.',
+  },
+  { name: 'collect_due', input: 'instance, creditorId', does: 'Collects every scheduled debit that is due. Per collection: SETTLED, or RETURNED with its code (AM04...).' },
+  { name: 'list_returns', input: 'instance, creditorId', does: 'Returned and refused debits with their codes and what to do next, for dunning.' },
+  { name: 'coverage', input: 'instance, creditorId', does: 'Free, locked, held and exposure per token.' },
 ]
+
+export const MCP_PAYER_TOOLS: McpTool[] = [
+  { name: 'list_my_debits', input: 'instance, payer', does: 'Every debit on a payer\u2019s mandates and whether each can still be refunded.' },
+  { name: 'upcoming_debits', input: 'instance, payer', does: 'Announced debits that have not been collected yet, soonest first.' },
+  { name: 'explain_refund_rights', input: 'instance, collectionId', does: 'In plain language: can it still be refunded, until when, and from what (reserve or held funds).' },
+  {
+    name: 'prepare_refund',
+    input: 'instance, collectionId, payer',
+    does: 'Returns the EIP-712 DebtorAction typed data and a link to /pay where the human signs. It never signs and never needs a key.',
+  },
+]
+
+export const MCP_CONFIG = `{
+  "mcpServers": {
+    "recall": {
+      "command": "bun",
+      "args": ["run", "/ABSOLUTE/PATH/TO/recall/packages/mcp/src/index.ts"],
+      "env": {
+        "NETWORK": "arc",
+        "RECALL_OPERATOR_KEY": "0x\u2026 an operator wallet, gas only"
+      }
+    }
+  }
+}`
+
+export const MCP_INSTALL = `cd recall/packages/mcp && bun install
+# Claude Desktop: claude_desktop_config.json   Cursor: ~/.cursor/mcp.json`

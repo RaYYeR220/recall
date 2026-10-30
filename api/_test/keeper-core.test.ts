@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { CollectionStatus, collectionIdOf, Scheme } from "@recall/sdk";
-import { MAX_KEEPER_TXS, planKeeperActions, presentedSecret, type KeeperItem, type KeeperWindows } from "../_lib/keeper-core";
-import { parseKeeperCreditors } from "../_lib/env";
+import { MAX_KEEPER_TXS, planKeeperActions, presentedSecret, type KeeperItem, type KeeperWindows } from "../_lib/keeper-core.js";
+import { parseKeeperCreditors } from "../_lib/env.js";
 
 const H = (n: string) => `0x${n.repeat(32)}` as const;
 const NOW = 2_000_000_000;

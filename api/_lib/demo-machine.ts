@@ -6,7 +6,17 @@ export const DEMO_STEPS: readonly DemoStep[] = ["start", "prenotify", "collect",
 
 export type DemoPhase = "started" | "prenotified" | "collected" | "refunded" | "expired" | "failed";
 
-/** 0.02 EURC (6 decimals): what every demo debit moves. The refund returns it to the house debtor. */
+/** The two stablecoins the demo can run in. USDC is the default. */
+export type DemoAsset = "USDC" | "EURC";
+export const DEMO_DEFAULT_ASSET: DemoAsset = "USDC";
+
+/** Reads the asset a visitor asked for. Absent means the default; anything else but USDC or EURC is an error (null). */
+export function parseAsset(value: unknown): DemoAsset | null {
+  if (value === undefined || value === null || value === "") return DEMO_DEFAULT_ASSET;
+  return value === "USDC" || value === "EURC" ? value : null;
+}
+
+/** 0.02 of the run's asset (6 decimals): what every demo debit moves. The refund returns it to the house debtor. */
 export const DEMO_AMOUNT = 20_000n;
 /** A run that has not finished this long after it began is abandoned and may be replaced. */
 export const RUN_STALE_SECONDS = 20 * 60;
@@ -16,6 +26,8 @@ export interface DemoRun {
   phase: DemoPhase;
   /** Unix seconds. */
   createdAt: number;
+  /** The asset this run moves. Runs saved before the toggle existed were EURC. */
+  asset?: DemoAsset;
   mandateId?: Hex;
   collectionId?: Hex;
   e2eId?: Hex;

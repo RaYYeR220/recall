@@ -11,6 +11,8 @@ export interface MerchantCtx {
   isOwner: boolean
   /** Disabled reason for write buttons (wrong chain, no wallet), or undefined when ready. */
   gate: string | undefined
+  /** A read-only view of someone else's creditor (a ?watch= link): no wallet, every write is disabled. */
+  readOnly?: boolean
 }
 
 export const MerchantContext = createContext<MerchantCtx | null>(null)

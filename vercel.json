@@ -9,5 +9,11 @@
     "api/**/*.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/keeper",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }

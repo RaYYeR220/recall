@@ -45,17 +45,11 @@ export async function takeRelaySlot(
   }
   const ipCount = await kv.incr(`relay:ip:${day}:${ip}`, ttl);
   if (ipCount > limits.perIpPerDay) {
-    // give the global slot back: this request will not be sent
-    await refundGlobal(kv, day, ttl);
+    // give the global slot back (atomically): this request will not be sent
+    await kv.decr(`relay:global:${day}`);
     return { ok: false, reason: "ip", limit: limits.perIpPerDay, retryAfterSeconds: ttl };
   }
   return { ok: true, ipCount, globalCount };
-}
-
-async function refundGlobal(kv: Kv, day: string, ttl: number): Promise<void> {
-  const key = `relay:global:${day}`;
-  const cur = Number((await kv.get(key)) ?? "0");
-  if (cur > 0) await kv.set(key, String(cur - 1), ttl);
 }
 
 export type RunSlot = { ok: true; runsToday: number } | { ok: false; limit: number; retryAfterSeconds: number };

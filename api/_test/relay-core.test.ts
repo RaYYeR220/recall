@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { Hex } from "viem";
 import { encodeErrorResult } from "viem";
 import { debitRailAbi } from "@recall/sdk";
-import { memoryKv } from "../_lib/kv";
-import { handleRelay, parseRelayBody, type RelayDeps } from "../_lib/relay-core";
+import { memoryKv } from "../_lib/kv.js";
+import { handleRelay, parseRelayBody, type RelayDeps } from "../_lib/relay-core.js";
 
 const EURC = "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1";
 const USDC = "0x3600000000000000000000000000000000000000";

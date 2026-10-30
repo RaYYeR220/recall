@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { windowSegments, WindowBar } from '@/components/NoticeCard'
 import { Chip, DemoPill, ErrorPanel, ExtLink, Skeleton } from '@/components/ui'
-import { demoApi, DemoApiError, loadRunAuth, saveRunAuth, type DemoEvent, type DemoStatus, type DemoStepName } from '@/lib/demoApi'
+import { DEFAULT_DEMO_ASSET, demoApi, DemoApiError, loadRunAuth, saveRunAuth, type DemoAsset, type DemoEvent, type DemoStatus, type DemoStepName } from '@/lib/demoApi'
 import { countdownText, shortAddress } from '@/lib/format'
 import { notify } from '@/lib/notify'
 import { Provoke } from './demo/Provoke'
@@ -24,6 +24,7 @@ export function DemoScreen() {
   const [busy, setBusy] = useState<DemoStepName | null>(null)
   const [events, setEvents] = useState<Partial<Record<DemoStepName, DemoEvent[]>>>({})
   const [auth, setAuth] = useState(loadRunAuth)
+  const [pick, setPick] = useState<DemoAsset>(DEFAULT_DEMO_ASSET)
 
   const q = useQuery({
     queryKey: ['demo-status'],
@@ -40,7 +41,7 @@ export function DemoScreen() {
   async function runStep(step: DemoStepName) {
     setBusy(step)
     try {
-      const r = await demoApi.step(step, step === 'start' ? undefined : (auth ?? undefined))
+      const r = await demoApi.step(step, step === 'start' ? undefined : (auth ?? undefined), pick)
       if (r.runId && r.runToken) {
         const a = { runId: r.runId, token: r.runToken }
         saveRunAuth(a)
@@ -100,15 +101,33 @@ export function DemoScreen() {
   const disabled = (s: DemoStepName): string | undefined => {
     if (!status.configured) return 'Not switched on on this server'
     if (watching) return 'Another visitor is running the demo'
-    if (s === 'start' && !status.ready) return status.problems[0] ?? 'Not ready'
+    if (s === 'start') {
+      const a = status.assets?.[pick]
+      if (a ? !a.ready : !status.ready) return (a?.problems ?? status.problems)[0] ?? 'Not ready'
+    }
     if (s === 'collect' && noticeLeft !== null && noticeLeft > 0) return `Due in ${countdownText(noticeLeft)}`
     return undefined
   }
+
+  // The asset on screen: the live run's, or the one about to be started.
+  const asset: DemoAsset = status.active && run ? (run.asset ?? 'EURC') : pick
 
   return (
     <Shell>
       <div className="mt-8 grid gap-6 lg:grid-cols-[1.25fr_1fr] lg:gap-10">
         <div>
+          {inactive && (
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="seg" role="group" aria-label="Asset for this run">
+                {(['USDC', 'EURC'] as const).map((a) => (
+                  <button key={a} type="button" aria-pressed={pick === a} onClick={() => setPick(a)}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[12.5px] text-ink-3">Each run moves 0.02 {pick}. USDC is the default.</span>
+            </div>
+          )}
           <ol className="space-y-3" aria-label="Demo steps">
             {STEPS.map((m) => (
               <StepCard
@@ -169,7 +188,7 @@ export function DemoScreen() {
             <h2 className="text-[15px] font-medium tracking-tight">What is real here</h2>
             <ul className="mt-3 space-y-2 text-[13px] leading-snug text-ink-3">
               <li>Every step is a real transaction on Arc {status.network === 'arc' ? 'mainnet' : 'testnet'}, on the demo rail.</li>
-              <li>A house merchant and a house payer hold the funds. Each debit is 0.02 EURC and the refund returns it.</li>
+              <li>A house merchant and a house payer hold the funds. Each debit is 0.02 {asset} and the refund returns it.</li>
               <li>
                 {status.runsToday} of {status.runsPerDay} runs used today. One run at a time.
               </li>

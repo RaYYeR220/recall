@@ -48,7 +48,7 @@ export async function POST(req: Request): Promise<Response> {
   const input = { runId: body["runId"], token: body["token"] };
   switch (step) {
     case "start":
-      return send(await stepStart(env.ctx, kv, Date.now()));
+      return send(await stepStart(env.ctx, kv, Date.now(), body["asset"]));
     case "prenotify":
       return send(await stepPrenotify(env.ctx, kv, input));
     case "collect":
