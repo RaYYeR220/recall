@@ -94,8 +94,10 @@ export function DemoScreen() {
   const noticeLeft = run?.dueAt !== undefined && run.phase === 'prenotified' ? Math.max(0, run.dueAt - now) : null
   const refundLeft = run?.phase === 'collected' && run.settledAt !== undefined && run.refundWindow !== undefined ? Math.max(0, run.settledAt + run.refundWindow - now) : null
   const stepState = (s: DemoStepName): 'todo' | 'next' | 'done' => {
+    // A finished run must not lock the page: the first step is always available again, and only the visitor who ran
+    // it still sees their own completed steps.
+    if (inactive) return s === 'start' ? 'next' : run && mine && run.txs[s] ? 'done' : 'todo'
     if (run && run.txs[s]) return 'done'
-    if (inactive) return s === 'start' ? 'next' : 'todo'
     return next === s ? 'next' : 'todo'
   }
   const disabled = (s: DemoStepName): string | undefined => {
@@ -135,7 +137,7 @@ export function DemoScreen() {
                 meta={m}
                 state={stepState(m.step)}
                 busy={busy === m.step}
-                hash={run?.txs[m.step]}
+                hash={stepState(m.step) === 'done' ? run?.txs[m.step] : undefined}
                 explorerUrl={run?.explorer[m.step]}
                 events={events[m.step] ?? []}
                 disabledReason={disabled(m.step)}
